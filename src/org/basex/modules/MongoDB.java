@@ -25,13 +25,18 @@ import com.mongodb.WriteResult;
 
 import com.mongodb.util.JSON;
 
+/**
+ * Functions on Mongodb databases.
+ *
+ * @author BaseX Team 2005-13, BSD License
+ * @author Prakash Thapa
+ */
 public class MongoDB extends QueryModule {
 	private HashMap<String, MongoClient> connections =
 			new HashMap<String, MongoClient>();
 	private HashMap<String, DB> dbs =
 			new HashMap<String, DB>();
-	private DB db = null;
-	private MongoClient mongoClient = null;
+	
 	
 public Str Connection(final Str host, final Int port, final Str dbname) throws QueryException {
 	  String handler = "Client" + connections.size();
@@ -64,7 +69,11 @@ public Str Connection(final Str host, final Int port, final Str dbname) throws Q
 			final String dbh = "DB" + dbs.size();
 			try {
 				DB db = mongoClient.getDB(uri.getDatabase());
-				//db.authenticate(uri.getUsername(), uri.getPassword());
+				if(uri.getUsername()!=null && uri.getPassword()!=null) {
+				boolean auth = db.authenticate(uri.getUsername(), uri.getPassword());
+					if(!auth) 
+						throw new QueryException("Invalid username or password");
+				}
 				dbs.put(dbh, db);
 				return Str.get(dbh);
 
@@ -194,12 +203,19 @@ public Str Connection(final Str host, final Int port, final Str dbname) throws Q
 	
 	/**
 	 * 
-	 * @param handler
-	 * @param col
-	 * @param insertString
+	 * @param handler DB Handler 
+	 * @param col Collection name
+	 * @param insertString string to insert in json formart
 	 * @throws QueryException
 	 */
 	public void insert(final Str handler, Str col, Str insertString) throws QueryException {
+//		final DB db = getDbHandler(handler);
+//		DBObject obj = (DBObject) JSON.parse(insertString.toJava());
+//		db.getCollection(col.toJava()).insert(obj);
+		getDbHandler(handler).getCollection(col.toJava()).insert((DBObject) JSON.parse(insertString.toJava()));
+	}
+	
+	public void update(final Str handler, Str col, Str insertString) throws QueryException {
 //		final DB db = getDbHandler(handler);
 //		DBObject obj = (DBObject) JSON.parse(insertString.toJava());
 //		db.getCollection(col.toJava()).insert(obj);
@@ -248,75 +264,15 @@ public Str Connection(final Str host, final Int port, final Str dbname) throws Q
 	}
 	
 	/**
-	 * 
-	 * @param col
-	 * @param bdo
-	 * @return
-	 */
-	public DBCursor getCollection(String col, BasicDBObject bdo) {
-		return db.getCollection(col).find(bdo);
-	}
-
-	/**
-	 * 
-	 * @param col
-	 * @param json
-	 */
-	public void insertJson(String col, String json) {
-		DBObject obj = (DBObject) JSON.parse(json);
-		db.getCollection(col).insert(obj);
-	}
-
-	/**
-	 * 
-	 * @param col
-	 * @return DBCursor Object(without json convert)
-	 */
-	public DBCursor findNormal(String col) {
-		return db.getCollection(col).find();
-	}
-
-	/**
-	 * 
-	 * @param col
-	 * @return json format of collections in string
-	 */
-	public String find(String col) {
-		try {
-			final DBCollection coll = db.getCollection(col);
-			final DBCursor result = coll.find();
-			String string = this.toJson(result);
-			return string;
-		} catch (NullPointerException e) {
-			e.printStackTrace();
-			return "error";
-		}
-
-	}
-
-
-	
-
-	/**
 	 * Convert the DBCursor Object into JSON. easy to implement
 	 * 
 	 * @param cursor
 	 * @return json format data of DBCursor
 	 */
 	private String toJson(DBCursor cursor) {
-		String s = JSON.serialize(cursor);
-		System.out.println(s);
-		return s;
+		return JSON.serialize(cursor);
 	}
 
-	/**
-	 * 
-	 * @param dbName
-	 *            Name of database that wanted to be drop
-	 */
-	public void drop(String dbName) {
-		mongoClient.dropDatabase(dbName);
-	}
-
+	
 	
 }
