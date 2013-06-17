@@ -16,8 +16,12 @@ import com.mongodb.DB;
 import com.mongodb.DBCollection;
 import com.mongodb.DBCursor;
 import com.mongodb.DBObject;
+import com.mongodb.Mongo;
 import com.mongodb.MongoClient;
+import com.mongodb.MongoClientURI;
 import com.mongodb.MongoException;
+import com.mongodb.MongoURI;
+import com.mongodb.WriteResult;
 
 import com.mongodb.util.JSON;
 
@@ -49,19 +53,33 @@ public Str Connection(final Str host, final Int port, final Str dbname) throws Q
 	 * @return conncetion handler of Mongodb
 	 * @throws QueryException
 	 */
-	public Str Connection(final String url) throws QueryException {
+	public Str Connection(final Str url) throws QueryException {
 		
+		MongoClientURI uri = new MongoClientURI(url.toJava());
 		String handler = "Client" + connections.size();
 		try {
-			MongoClient mongoClient = new MongoClient();
+			MongoClient mongoClient = new MongoClient(uri);
 			connections.put(handler, mongoClient);
-			return Str.get(handler);
+			//select database
+			final String dbh = "DB" + dbs.size();
+			try {
+				DB db = mongoClient.getDB(uri.getDatabase());
+				//db.authenticate(uri.getUsername(), uri.getPassword());
+				dbs.put(dbh, db);
+				return Str.get(dbh);
 
+			} catch (final MongoException ex) {
+				throw new QueryException(ex);
+			}
+		
 		} catch (final MongoException ex) {
 			throw new QueryException(ex);
 		} catch (UnknownHostException ex) {
 			throw new QueryException(ex);
 		}
+		
+		
+		
 	}
 	
 	public Str cnnctn() throws QueryException {
@@ -97,31 +115,16 @@ public Str Connection(final Str host, final Int port, final Str dbname) throws Q
 		
 	}
 
-	public Item find(final Str handler, final Str col) throws QueryException {
+	private DB getDbHandler(final Str handler) throws QueryException {
 		String ch = handler.toJava();
 		final DB db = dbs.get(ch);
 		if(db == null)
 			throw new QueryException("Unknown database handler: '" + ch + "'");
-		final DBCollection coll = db.getCollection(col.toJava());
-		final DBCursor result = coll.find();
-		//return  jsonToXml(Str.get(JSON.serialize(result)));
-		return resultToXml(result);
-		
-	}
-	
-	public Item find(final Str handler,String col, String json, String field)throws QueryException {
-		String ch = handler.toJava();
-		final DB db = dbs.get(ch);
-		if(db == null)
-			throw new QueryException("Unknown database handler: '" + ch + "'");
-		DBObject obj = (DBObject) JSON.parse(json);
-		DBObject f = (DBObject) JSON.parse(field);
-		//return this.toJson(db.getCollection(col).find(obj, f));
-		return null;
+		return db;
 	}
 	
 	/**
-	 * 
+	 * Collection result(DBCursor) into xml item
 	 * @param result DBCursor 
 	 * @return Item of Xml 
 	 * @throws QueryException
@@ -129,6 +132,78 @@ public Str Connection(final Str host, final Int port, final Str dbname) throws Q
 	private Item resultToXml(final DBCursor result) throws QueryException {
 		final Str json = Str.get(JSON.serialize(result));
 		return new FNJson(null, Function._JSON_PARSE, json).item(context, null);
+	}
+	
+	/**
+	 * MongoDB find() without any attributes. eg. db.collections.find()
+	 * @param handler
+	 * @param col
+	 * @return result in xml element
+	 * @throws QueryException
+	 */
+	public Item find(final Str handler, final Str col) throws QueryException {
+		
+		final DB db = getDbHandler(handler);
+		final DBCursor result  = db.getCollection(col.toJava()).find();
+		//return  jsonToXml(Str.get(JSON.serialize(result)));
+		Item item =resultToXml(result); 
+		close(handler);
+		return item;
+		
+	}
+	
+	/**
+	 * MongoDB find() condtion. eg. db.collections.find({'_id':2})
+	 * @param handler Database handler
+	 * @param col collection
+	 * @param query conditions
+	 * @return xml element
+	 * @throws QueryException
+	 */
+	public Item find(final Str handler,Str col, Str query)throws QueryException {
+		
+		final DB db = getDbHandler(handler);
+		DBObject queryObj = (DBObject) JSON.parse(query.toJava());
+		final DBCursor result = db.getCollection(col.toJava()).find(queryObj);
+		//return this.toJson(db.getCollection(col).find(obj, f));
+		Item item =resultToXml(result); 
+		close(handler);
+		return item;
+	}
+	
+	/**
+	 * MongoDB find() with query and projection. eg. db.collections.find({'_id':2},{'name':1})
+	 * @param handler Database handler
+	 * @param col collection
+	 * @param query conditions
+	 * @param field
+	 * @return xml elements
+	 * @throws QueryException
+	 */
+	public Item find(final Str handler,Str col, Str query, Str field)throws QueryException {
+		
+		final DB db = getDbHandler(handler);
+		DBObject queryObj = (DBObject) JSON.parse(query.toJava());
+		DBObject fieldObj = (DBObject) JSON.parse(field.toJava());
+		final DBCursor result = db.getCollection(col.toJava()).find(queryObj,fieldObj);
+		//return this.toJson(db.getCollection(col).find(obj, f));
+		Item item =resultToXml(result); 
+		close(handler);
+		return item;
+	}
+	
+	/**
+	 * 
+	 * @param handler
+	 * @param col
+	 * @param insertString
+	 * @throws QueryException
+	 */
+	public void insert(final Str handler, Str col, Str insertString) throws QueryException {
+//		final DB db = getDbHandler(handler);
+//		DBObject obj = (DBObject) JSON.parse(insertString.toJava());
+//		db.getCollection(col.toJava()).insert(obj);
+		getDbHandler(handler).getCollection(col.toJava()).insert((DBObject) JSON.parse(insertString.toJava()));
 	}
 	
 	/**
@@ -153,20 +228,25 @@ public Str Connection(final Str host, final Int port, final Str dbname) throws Q
 	}
 
 	
-	
-	public void cls(final Str handler) throws QueryException {
+	/**
+	 * take DB handler as parameter and get MongoClient and then close it
+	 * @param handler DB handler 
+	 * @throws QueryException
+	 */
+	private void close(final Str handler) throws QueryException {
 		String ch = handler.toJava();
-
-		final MongoClient client = connections.get(handler);
+//		
+//		final MongoClient client = connections.get(handler);
+//		if(client == null)
+//			throw new QueryException("Unknown MongoDB handler: '" + ch + "'");
+//		client.close();
+		
+		final MongoClient client = (MongoClient)getDbHandler(handler).getMongo();
 		if(client == null)
 			throw new QueryException("Unknown MongoDB handler: '" + ch + "'");
 		client.close();
 	}
 	
-	public void insertCollection(String col, BasicDBObject bdo) {
-		db.getCollection(col).insert(bdo);
-	}
-
 	/**
 	 * 
 	 * @param col
@@ -238,11 +318,5 @@ public Str Connection(final Str host, final Int port, final Str dbname) throws Q
 		mongoClient.dropDatabase(dbName);
 	}
 
-	/**
-	 * close mongodb instance
-	 */
-	public void close() {
-		 mongoClient.close();
-	}
-
+	
 }
