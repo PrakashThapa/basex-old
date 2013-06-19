@@ -11,17 +11,14 @@ import org.basex.query.value.item.Int;
 import org.basex.query.value.item.Item;
 import org.basex.query.value.item.Str;
 
-import com.mongodb.BasicDBObject;
 import com.mongodb.DB;
 import com.mongodb.DBCollection;
 import com.mongodb.DBCursor;
 import com.mongodb.DBObject;
-import com.mongodb.Mongo;
 import com.mongodb.MongoClient;
 import com.mongodb.MongoClientURI;
 import com.mongodb.MongoException;
-import com.mongodb.MongoURI;
-import com.mongodb.WriteResult;
+
 
 import com.mongodb.util.JSON;
 
@@ -36,21 +33,6 @@ public class MongoDB extends QueryModule {
 			new HashMap<String, MongoClient>();
 	private HashMap<String, DB> dbs =
 			new HashMap<String, DB>();
-	
-	
-public Str Connection(final Str host, final Int port, final Str dbname) throws QueryException {
-	  String handler = "Client" + connections.size();
-		try {
-			MongoClient mongoClient = new MongoClient((String)host.toJava(),(int)port.itr());//
-			connections.put(handler, mongoClient);
-			return Str.get(handler);
-
-		} catch (final MongoException ex) {
-			throw new QueryException(ex);
-		} catch (UnknownHostException ex) {
-			throw new QueryException(ex);
-		}
-	}
 
 	/**
 	 * 
@@ -70,9 +52,9 @@ public Str Connection(final Str host, final Int port, final Str dbname) throws Q
 			try {
 				DB db = mongoClient.getDB(uri.getDatabase());
 				if(uri.getUsername()!=null && uri.getPassword()!=null) {
-				boolean auth = db.authenticate(uri.getUsername(), uri.getPassword());
-					if(!auth) 
-						throw new QueryException("Invalid username or password");
+					boolean auth = db.authenticate(uri.getUsername(), uri.getPassword());
+						if(!auth) 
+							throw new QueryException("Invalid username or password");
 				}
 				dbs.put(dbh, db);
 				return Str.get(dbh);
@@ -90,6 +72,28 @@ public Str Connection(final Str host, final Int port, final Str dbname) throws Q
 		
 		
 	}
+	/**
+	 *  Mongodb  connection when provided with host port and db separately. 	
+	 * @param host
+	 * @param port
+	 * @param dbname
+	 * @return DB instance
+	 * @throws QueryException
+	 */
+	public Str Connection(final Str host, final Int port, final Str dbname) throws QueryException {
+		  String handler = "Client" + connections.size();
+		try {
+			MongoClient mongoClient = new MongoClient((String)host.toJava(),(int)port.itr());//
+			connections.put(handler, mongoClient);
+			return Str.get(handler);
+
+		} catch (final MongoException ex) {
+			throw new QueryException(ex);
+		} catch (UnknownHostException ex) {
+			throw new QueryException(ex);
+		}
+	}
+
 	
 	public Str cnnctn() throws QueryException {
 		String handler = "Client" + connections.size();
@@ -142,7 +146,30 @@ public Str Connection(final Str host, final Int port, final Str dbname) throws Q
 		final Str json = Str.get(JSON.serialize(result));
 		return new FNJson(null, Function._JSON_PARSE, json).item(context, null);
 	}
+	/**
+	 * Collection object(DBObject) into xml item
+	 * @param object DBObject  (one row result)
+	 * @return Item of Xml 
+	 * @throws QueryException
+	 */
+	private Item objectToXml(final DBObject object) throws QueryException {
+		final Str json = Str.get(JSON.serialize(object));
+		return new FNJson(null, Function._JSON_PARSE, json).item(context, null);
+	}
 	
+	/**
+	 * take string as Str parameters and return DBObject of mongodb.
+	 * @param string
+	 * @return
+	 * @throws QueryException
+	 */
+	private DBObject getDbObjectFromStr(final Str string) throws QueryException {
+		try {
+			return  (DBObject) JSON.parse(string.toJava());
+		} catch (Exception e) {
+			throw new QueryException("Invalid input parameters");
+		}
+	}
 	/**
 	 * MongoDB find() without any attributes. eg. db.collections.find()
 	 * @param handler
@@ -172,8 +199,8 @@ public Str Connection(final Str host, final Int port, final Str dbname) throws Q
 	public Item find(final Str handler,Str col, Str query)throws QueryException {
 		
 		final DB db = getDbHandler(handler);
-		DBObject queryObj = (DBObject) JSON.parse(query.toJava());
-		final DBCursor result = db.getCollection(col.toJava()).find(queryObj);
+		//DBObject queryObj = getDbObjectFromStr(query);
+		final DBCursor result = db.getCollection(col.toJava()).find(getDbObjectFromStr(query));
 		//return this.toJson(db.getCollection(col).find(obj, f));
 		Item item =resultToXml(result); 
 		close(handler);
@@ -192,15 +219,59 @@ public Str Connection(final Str host, final Int port, final Str dbname) throws Q
 	public Item find(final Str handler,Str col, Str query, Str field)throws QueryException {
 		
 		final DB db = getDbHandler(handler);
-		DBObject queryObj = (DBObject) JSON.parse(query.toJava());
-		DBObject fieldObj = (DBObject) JSON.parse(field.toJava());
-		final DBCursor result = db.getCollection(col.toJava()).find(queryObj,fieldObj);
+		//DBObject queryObj = (DBObject) JSON.parse(query.toJava());
+		//DBObject fieldObj = (DBObject) JSON.parse(field.toJava());
+		final DBCursor result = db.getCollection(col.toJava()).find(getDbObjectFromStr(query),getDbObjectFromStr(field));
 		//return this.toJson(db.getCollection(col).find(obj, f));
 		Item item =resultToXml(result); 
 		close(handler);
-		return item;
+		return item;		
 	}
 	
+	/**
+	 * 
+	 * @param handler
+	 * @param col
+	 * @return
+	 * @throws QueryException
+	 */
+	public Item findOne(final Str handler,Str col)throws QueryException {
+		
+		final DBObject oneresult =  getDbHandler(handler).getCollection(col.toJava()).findOne();
+		Item item =objectToXml(oneresult); 
+		close(handler);
+		return item;		
+	}
+	
+	/**
+	 * 
+	 * @param handler
+	 * @param col
+	 * @param query
+	 * @return
+	 * @throws QueryException
+	 */
+	public Item findOne(final Str handler,Str col, Str query)throws QueryException {
+		
+		Item item =objectToXml(getDbHandler(handler).getCollection(col.toJava()).findOne(getDbObjectFromStr(query))); 
+		close(handler);
+		return item;		
+	}
+	/**
+	 * 
+	 * @param handler
+	 * @param col
+	 * @param query
+	 * @param field
+	 * @return
+	 * @throws QueryException
+	 */
+	public Item findOne(final Str handler,Str col, Str query, Str field)throws QueryException {
+		final DBObject oneresult =  getDbHandler(handler).getCollection(col.toJava()).findOne(getDbObjectFromStr(query),getDbObjectFromStr(field));
+		Item item =objectToXml(oneresult); 
+		close(handler);
+		return item;		
+	}
 	/**
 	 * 
 	 * @param handler DB Handler 
@@ -208,19 +279,28 @@ public Str Connection(final Str host, final Int port, final Str dbname) throws Q
 	 * @param insertString string to insert in json formart
 	 * @throws QueryException
 	 */
-	public void insert(final Str handler, Str col, Str insertString) throws QueryException {
+	public void insert(final Str handler, final Str col, Str insertString) throws QueryException {
 //		final DB db = getDbHandler(handler);
 //		DBObject obj = (DBObject) JSON.parse(insertString.toJava());
 //		db.getCollection(col.toJava()).insert(obj);
-		getDbHandler(handler).getCollection(col.toJava()).insert((DBObject) JSON.parse(insertString.toJava()));
+		getDbHandler(handler).getCollection(col.toJava()).insert(getDbObjectFromStr(insertString));
 	}
 	
 	public void update(final Str handler, Str col, Str insertString) throws QueryException {
-//		final DB db = getDbHandler(handler);
-//		DBObject obj = (DBObject) JSON.parse(insertString.toJava());
-//		db.getCollection(col.toJava()).insert(obj);
-		getDbHandler(handler).getCollection(col.toJava()).insert((DBObject) JSON.parse(insertString.toJava()));
+		getDbHandler(handler).getCollection(col.toJava()).insert(getDbObjectFromStr(insertString));
 	}
+	
+	/**
+	 * Mongodb Save function
+	 * @param handler DB handler
+	 * @param col collection name
+	 * @param insertString string in Str  to save
+	 * @throws QueryException
+	 */
+	public void save(final Str handler,final Str col, final Str insertString) throws QueryException {
+		getDbHandler(handler).getCollection(col.toJava()).save(getDbObjectFromStr(insertString));
+	}
+	
 	
 	/**
 	 * 
