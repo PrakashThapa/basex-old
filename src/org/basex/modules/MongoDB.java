@@ -23,7 +23,7 @@ import com.mongodb.MongoException;
 import com.mongodb.util.JSON;
 
 /**
- * Functions on Mongodb databases.
+ * Mongodb extension of Basex.
  *
  * @author BaseX Team 2005-13, BSD License
  * @author Prakash Thapa
@@ -33,11 +33,10 @@ public class MongoDB extends QueryModule {
 			new HashMap<String, MongoClient>();
 	private HashMap<String, DB> dbs =
 			new HashMap<String, DB>();
-
 	/**
 	 * 
 	 * @param url of Mongodb connection
-	 * @return conncetion handler of Mongodb
+	 * @return conncetion DB connection handler of Mongodb
 	 * @throws QueryException
 	 */
 	public Str Connection(final Str url) throws QueryException {
@@ -68,10 +67,8 @@ public class MongoDB extends QueryModule {
 		} catch (UnknownHostException ex) {
 			throw new QueryException(ex);
 		}
-		
-		
-		
 	}
+
 	/**
 	 *  Mongodb  connection when provided with host port and db separately. 	
 	 * @param host
@@ -94,21 +91,13 @@ public class MongoDB extends QueryModule {
 		}
 	}
 
-	
-	public Str cnnctn() throws QueryException {
-		String handler = "Client" + connections.size();
-		try {
-			MongoClient mongoClient = new MongoClient();
-			connections.put(handler, mongoClient);
-			return Str.get(handler);
-
-		} catch (final MongoException ex) {
-			throw new QueryException(ex);
-		} catch (UnknownHostException ex) {
-			throw new QueryException(ex);
-		}
-	}
-
+	/**
+	 * 
+	 * @param handler MongoClient handler of hashmap
+	 * @param dbName Databasename to connect
+	 * @return DB handler of hashmap
+	 * @throws QueryException
+	 */
 	public Str selectDb(final Str handler, final Str dbName) throws QueryException {
 		String ch = handler.toJava();
 		// boolean auth = db.authenticate(username,
@@ -128,6 +117,12 @@ public class MongoDB extends QueryModule {
 		
 	}
 
+	/**
+	 * get DB handler from hashmap.  
+	 * @param handler hashmap key in Str  
+	 * @return DB handler 
+	 * @throws QueryException
+	 */
 	private DB getDbHandler(final Str handler) throws QueryException {
 		String ch = handler.toJava();
 		final DB db = dbs.get(ch);
@@ -146,6 +141,7 @@ public class MongoDB extends QueryModule {
 		final Str json = Str.get(JSON.serialize(result));
 		return new FNJson(null, Function._JSON_PARSE, json).item(context, null);
 	}
+	
 	/**
 	 * Collection object(DBObject) into xml item
 	 * @param object DBObject  (one row result)
@@ -170,6 +166,7 @@ public class MongoDB extends QueryModule {
 			throw new QueryException("Invalid input parameters");
 		}
 	}
+	
 	/**
 	 * MongoDB find() without any attributes. eg. db.collections.find()
 	 * @param handler
@@ -208,7 +205,7 @@ public class MongoDB extends QueryModule {
 	}
 	
 	/**
-	 * MongoDB find() with query and projection. eg. db.collections.find({'_id':2},{'name':1})
+	 * just backup function need to remove when cleaning
 	 * @param handler Database handler
 	 * @param col collection
 	 * @param query conditions
@@ -229,14 +226,13 @@ public class MongoDB extends QueryModule {
 	}
 	
 	/**
-	 * 
+	 * Mongodb's findOne() function
 	 * @param handler
 	 * @param col
 	 * @return
 	 * @throws QueryException
 	 */
 	public Item findOne(final Str handler,Str col)throws QueryException {
-		
 		final DBObject oneresult =  getDbHandler(handler).getCollection(col.toJava()).findOne();
 		Item item =objectToXml(oneresult); 
 		close(handler);
@@ -244,7 +240,7 @@ public class MongoDB extends QueryModule {
 	}
 	
 	/**
-	 * 
+	 * Mongodb's findOne({'_id':2}) function with query 
 	 * @param handler
 	 * @param col
 	 * @param query
@@ -252,11 +248,11 @@ public class MongoDB extends QueryModule {
 	 * @throws QueryException
 	 */
 	public Item findOne(final Str handler,Str col, Str query)throws QueryException {
-		
 		Item item =objectToXml(getDbHandler(handler).getCollection(col.toJava()).findOne(getDbObjectFromStr(query))); 
 		close(handler);
 		return item;		
 	}
+	
 	/**
 	 * 
 	 * @param handler
@@ -272,6 +268,7 @@ public class MongoDB extends QueryModule {
 		close(handler);
 		return item;		
 	}
+	
 	/**
 	 * 
 	 * @param handler DB Handler 
@@ -283,9 +280,18 @@ public class MongoDB extends QueryModule {
 //		final DB db = getDbHandler(handler);
 //		DBObject obj = (DBObject) JSON.parse(insertString.toJava());
 //		db.getCollection(col.toJava()).insert(obj);
+		//WriteResult result	=	getDbHandler(handler).getCollection(col.toJava()).insert(getDbObjectFromStr(insertString));
 		getDbHandler(handler).getCollection(col.toJava()).insert(getDbObjectFromStr(insertString));
+		
 	}
 	
+	/**
+	 * need to complete
+	 * @param handler
+	 * @param col
+	 * @param insertString
+	 * @throws QueryException
+	 */
 	public void update(final Str handler, Str col, Str insertString) throws QueryException {
 		getDbHandler(handler).getCollection(col.toJava()).insert(getDbObjectFromStr(insertString));
 	}
@@ -312,17 +318,6 @@ public class MongoDB extends QueryModule {
 		return new FNJson(null, Function._JSON_PARSE, json).item(context, null);
 	}
 	
-	public Str fnd(final Str handler, final Str col) throws QueryException {
-		String ch = handler.toJava();
-		final DB db = dbs.get(ch);
-		if(db == null)
-			throw new QueryException("Unknown database handler: '" + ch + "'");
-
-		final DBCollection coll = db.getCollection(col.toJava());
-		final DBCursor result = coll.find();
-		return Str.get(toJson(result));
-	}
-
 	
 	/**
 	 * take DB handler as parameter and get MongoClient and then close it
@@ -331,16 +326,17 @@ public class MongoDB extends QueryModule {
 	 */
 	private void close(final Str handler) throws QueryException {
 		String ch = handler.toJava();
+		final MongoClient client = (MongoClient)getDbHandler(handler).getMongo();
+		if(client == null)
+			throw new QueryException("Unknown MongoDB handler: '" + ch + "'");
+		client.close();
 //		
 //		final MongoClient client = connections.get(handler);
 //		if(client == null)
 //			throw new QueryException("Unknown MongoDB handler: '" + ch + "'");
 //		client.close();
 		
-		final MongoClient client = (MongoClient)getDbHandler(handler).getMongo();
-		if(client == null)
-			throw new QueryException("Unknown MongoDB handler: '" + ch + "'");
-		client.close();
+		
 	}
 	
 	/**
@@ -352,7 +348,5 @@ public class MongoDB extends QueryModule {
 	private String toJson(DBCursor cursor) {
 		return JSON.serialize(cursor);
 	}
-
-	
 	
 }
