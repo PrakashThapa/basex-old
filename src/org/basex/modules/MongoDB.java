@@ -12,7 +12,6 @@ import org.basex.query.value.item.Item;
 import org.basex.query.value.item.Str;
 
 import com.mongodb.DB;
-import com.mongodb.DBCollection;
 import com.mongodb.DBCursor;
 import com.mongodb.DBObject;
 import com.mongodb.MongoClient;
@@ -345,7 +344,7 @@ public class MongoDB extends QueryModule {
 	 * @param cursor
 	 * @return json format data of DBCursor
 	 */
-	private String toJson(DBCursor cursor) {
+	public String toJson(DBCursor cursor) {
 		return JSON.serialize(cursor);
 	}
 	

@@ -100,7 +100,7 @@ public class Setup  {
     * @param json
     */
    public void insertJson(String json) {
-	   DBObject obj = (DBObject) JSON.parse(json);
+	  // DBObject obj = (DBObject) JSON.parse(json);
 	  //db.getCollection(col).insert(obj);
    }
    /**
