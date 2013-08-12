@@ -29,14 +29,20 @@ public class MongoDB2 extends QueryModule {
     /**
      * mongoclient instances.
      */
-    private HashMap<String, MongoClient> connections =
+    private HashMap<String, MongoClient> mongoClients =
             new HashMap<String, MongoClient>();
     /**
      * DB instances instances.
      */
     private HashMap<String, DB> dbs =
             new HashMap<String, DB>();
-    private DB Conn(final Str url) throws QueryException {
+    /**
+     * Mongodb Connection from URLstructure: mongodb://root:root@localhost/test.
+     * @param url of Mongodb connection
+     * @return conncetion DB
+     * @throws QueryException
+     */
+    private DB Connection(final Str url) throws QueryException {
         MongoClientURI uri = new MongoClientURI(url.toJava());
         try {
             MongoClient mongoClient = new MongoClient(uri);
@@ -60,40 +66,7 @@ public class MongoDB2 extends QueryModule {
                   throw new QueryException(ex);
               }
     }
-    /**
-     * Mongodb Connection from URLstructure: mongodb://root:root@localhost/test.
-     * @param url of Mongodb connection
-     * @return conncetion DB connection handler of Mongodb
-     * @throws QueryException
-     */
-    public Str Connection(final Str url) throws QueryException {
-        MongoClientURI uri = new MongoClientURI(url.toJava());
-        String handler = "Client" + connections.size();
-        try {
-            MongoClient mongoClient = new MongoClient(uri);
-            connections.put(handler, mongoClient);
-            final String dbh = "DB" + dbs.size();
-            try {
-                DB db = mongoClient.getDB(uri.getDatabase());
-                if (uri.getUsername() != null && uri.getPassword() != null) {
-                    boolean auth = db.authenticate(uri.getUsername(),
-                            uri.getPassword());
-                    if (!auth) {
-                        throw new QueryException("Invalid "
-                    + "username or password");
-                    }
-                 }
-                dbs.put(dbh, db);
-                return Str.get(dbh);
-                } catch (final MongoException ex) {
-                    throw new QueryException(ex);
-                 }
-            } catch (final MongoException ex) {
-                throw new QueryException(ex);
-              } catch (UnknownHostException ex) {
-                  throw new QueryException(ex);
-              }
-        }
+
     /**
 	 *  Mongodb connection when provided with host.
 	 * port and database separately.
@@ -105,12 +78,12 @@ public class MongoDB2 extends QueryModule {
 	 */
 	public Str Connection(final Str host, final Int port, final Str dbname)
 	        throws QueryException {
-		  String handler = "Client" + connections.size();
+		  String handler = "Client" + mongoClients.size();
 		try {
 			MongoClient mongoClient = new MongoClient(
 			        (String) host.toJava(),
 			        (int) port.itr());
-			connections.put(handler, mongoClient);
+			mongoClients.put(handler, mongoClient);
 			return Str.get(handler);
 
 		} catch (final MongoException ex) {
@@ -131,7 +104,7 @@ public class MongoDB2 extends QueryModule {
 		String ch = handler.toJava();
 		// boolean auth = db.authenticate(username,
 		// (char[])password.toCharArray());
-		final MongoClient client = connections.get(ch);
+		final MongoClient client = mongoClients.get(ch);
 		if(client == null)
 			throw new QueryException("Unknown MongoDB handler: '" + ch + "'");
 		final String dbh = "DB" + dbs.size();
@@ -197,13 +170,18 @@ public class MongoDB2 extends QueryModule {
 	 * @return result in xml element
 	 * @throws QueryException
 	 */
-	public Item find(final Str url, final Str handler, final Str col) throws QueryException {
-		final DB db = Conn(url);
-		//final DBCursor result  = db.getCollection(col.toJava()).find();
-		return new FNJson(null, Function._JSON_PARSE,
-		        Str.get(JSON.serialize(
-		                db.getCollection(col.toJava()).find()))).item(context, null);
-		//return resultToXml(result);
+	public Item find(final Str url, final Str col) throws QueryException {
+		final DB db = Connection(url);
+		Item item;
+		db.requestStart();
+        try {
+             item =  new FNJson(null, Function._JSON_PARSE,
+                    Str.get(JSON.serialize(
+                            db.getCollection(col.toJava()).find()))).item(context, null);
+        } finally {
+           db.requestDone();
+        }
+	return item;
 	}
 	/**
 	 * MongoDB find() condtion. eg. db.collections.find({'_id':2})
@@ -379,7 +357,7 @@ public class MongoDB2 extends QueryModule {
 	 * for testing.
 	 */
 	public void getSize() {
-	    System.out.println(connections.size() + " db-> " + dbs.size());
+	    System.out.println(mongoClients.size() + " db-> " + dbs.size());
 	}
 	/**
 	 * test find with each connection.
@@ -387,21 +365,42 @@ public class MongoDB2 extends QueryModule {
 	 */
 	public Item testFind(final Str url, final Str col) throws QueryException {
         final Str handler = testConnection(url);
-        DB db = getDbHandler(handler);
-        final DBCursor result  = db.getCollection(col.toJava()).find();
-        Item item = resultToXml(result);
-        //close(handler);
-        return item;
+        try {
+            DB db = getDbHandler(handler);
+            final DBCursor result  = db.getCollection(col.toJava()).find();
+            return resultToXml(result);
+            //return Str.get(JSON.serialize(result));
+            //return Str.get(JSON.serialize(
+            //        getDbHandler(handler).getCollection(col.toJava()).find()));
+        } finally {
+            close(handler);
+        }
+    }
+	
+	public Item test2Find(final Str url, final Str col) throws QueryException {
+        DB db = Connection(url);
+        db.requestStart();
+        Str s;
+        try {
+            DBCursor result  = db.getCollection(col.toJava()).find();
+            s = Str.get(JSON.serialize(result));
+            
+        } finally {
+           db.requestDone();
+        }
+        return s;
+        //return Str.get(JSON.serialize(result));
     }
 	/**
 	 * test connection
 	 */
 	 private Str testConnection(final Str url) throws QueryException {
-	        MongoClientURI uri = new MongoClientURI(url.toJava());
-	        String handler = "Client" + connections.size();
+	     
+	     MongoClientURI uri = new MongoClientURI(url.toJava());
+	        String handler = "Client" + mongoClients.size();
 	        try {
 	            MongoClient mongoClient = new MongoClient(uri);
-	            connections.put(handler, mongoClient);
+	            mongoClients.put(handler, mongoClient);
 	            final String dbh = "DB" + dbs.size();
 	            try {
 	                DB db = mongoClient.getDB(uri.getDatabase());

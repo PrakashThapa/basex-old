@@ -1,34 +1,23 @@
 package org.basex.modules;
 
 import java.net.UnknownHostException;
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.Set;
 
 import org.basex.query.QueryException;
 import org.basex.query.QueryModule;
 import org.basex.query.func.FNJson;
-import org.basex.query.func.FuncParams;
 import org.basex.query.func.Function;
 import org.basex.query.value.item.Int;
 import org.basex.query.value.item.Item;
-import org.basex.query.value.item.QNm;
 import org.basex.query.value.item.Str;
-import org.basex.util.Token;
-import org.basex.util.hash.TokenMap;
-import org.bson.BSON;
-
 import com.mongodb.AggregationOutput;
-import com.mongodb.BasicDBObject;
 import com.mongodb.DB;
-import com.mongodb.DBCollection;
 import com.mongodb.DBCursor;
 import com.mongodb.DBObject;
 import com.mongodb.MongoClient;
 import com.mongodb.MongoClientURI;
 import com.mongodb.MongoException;
 import com.mongodb.util.JSON;
-import com.mongodb.util.JSONParseException;
 
 /**
  * Mongodb extension of Basex.
@@ -36,12 +25,8 @@ import com.mongodb.util.JSONParseException;
  * @author BaseX Team 2005-13, BSD License
  * @author Prakash Thapa
  */
-public class MongoDB extends QueryModule {
-  /** URL of this module. */
-  private static final String MONGO_URL = "http://basex.org/modules/mongo-db";
-  /** QName of MongoDB options. */
-  private static final QNm Q_MONGODB = QNm.get("mongodb", "options", MONGO_URL);
-  /**
+public class Old_MongoDB extends QueryModule {
+    /**
      * mongoclient instances.
      */
 
@@ -90,33 +75,33 @@ public class MongoDB extends QueryModule {
               }
         }
 
-  /**
-   * Mongodb connection when provided with host port and database separately.
-   *
-   * @param host host name
-   * @param port port
-   * @param dbname name of databases
-   * @return DB instance
-   * @throws QueryException
-   */
-  public Str connection(final Str host, final Int port, final Str dbname)
-      throws QueryException {
-    String handler = "Client" + mongoClients.size();
-    try {
-      MongoClient mongoClient = new MongoClient((String) host.toJava(),
-          (int) port.itr());
-      mongoClients.put(handler, mongoClient);
-      return Str.get(handler);
+    /**
+     *  Mongodb connection when provided with host port and database separately.
+	 * @param host
+	 * @param port
+	 * @param dbname
+	 * @return DB instance
+	 * @throws QueryException
+	 */
+	public Str connection(final Str host, final Int port, final Str dbname)
+	        throws QueryException {
+		  String handler = "Client" + mongoClients.size();
+		try {
+			MongoClient mongoClient = new MongoClient(
+			        (String) host.toJava(),
+			        (int) port.itr());
+			mongoClients.put(handler, mongoClient);
+			return Str.get(handler);
 
-    } catch (final MongoException ex) {
-      throw new QueryException(ex);
-    } catch (UnknownHostException ex) {
-      throw new QueryException(ex);
-    }
-  }
+		} catch (final MongoException ex) {
+			throw new QueryException(ex);
+		} catch (UnknownHostException ex) {
+			throw new QueryException(ex);
+		}
+	}
 
 	/**
-	 * DB selection with mongoclient instance.
+	 *  DB selection with mongoclient instance.
 	 * @param handler MongoClient handler of hashmap
 	 * @param dbName Databasename to connect
 	 * @return DB handler of hashmap
@@ -200,32 +185,15 @@ public class MongoDB extends QueryModule {
 	 */
 	private DBObject getDbObjectFromStr(final Str string) throws QueryException {
 		try {
-		  return  (DBObject) JSON.parse(string.toJava());
-    } catch (JSONParseException e) {
-      throw new QueryException("Invalid JSON syntax: " + string);
+		    return  (DBObject) JSON.parse(string.toJava());
+		} catch (Exception e) {
+			throw new QueryException("Invalid input parameters");
 		}
-	}
-
-	/**
-     * Return all the collections in current database.
-     * @param string
-     * @return result in xml element
-     * @throws QueryException
-     */
-	public Item collections(final Str handler) throws QueryException {
-	    final DB db = getDbHandler(handler);
-	  Set<String> col = db.getCollectionNames();
-	  BasicDBObject collection = new BasicDBObject("collections", col);
-	  try {
-        return objectToXml((DBObject) collection);
-	  } catch (JSONParseException e) {
-	      throw new QueryException("Invalid JSON syntax: " + col);
-	     }
 	}
 	/**
 	 * MongoDB find() without any attributes. eg. db.collections.find()
-	 * @param handler Database handler
-	 * @param col Collection name
+	 * @param handler
+	 * @param col
 	 * @return result in xml element
 	 * @throws QueryException
 	 */
@@ -254,80 +222,42 @@ public class MongoDB extends QueryModule {
 	 */
 	public Item find(final Str handler, final Str col, final Str query)
 	        throws QueryException {
-	  return find(handler, col, query, null, null);
+		final DB db = getDbHandler(handler);
+		db.requestStart();
+        try {
+            return resultToXml(db.getCollection(col.toJava()).find(
+                    getDbObjectFromStr(query)));
+        } catch (Exception e) {
+            throw new QueryException(e.getMessage());
+        } finally {
+               db.requestDone();
+        }
 	}
 
-  /**
-   * just backup function need to remove when cleaning.
-   * @param handler Database handler
-   * @param col collection
-   * @param query conditions
-   * @param field  projection on Mongodb
-   * @return xml elements
-   * @throws QueryException
-   */
-  public Item find(final Str handler, final Str col, final Str query,
-      final Item options) throws QueryException {
-    return find(handler, col, query, options, null);
-  }
-
-  /**
-   * just backup function need to remove when cleaning.
-   * @param handler Database handler
-   * @param col collection
-   * @param query conditions
-   * @param field  projection on Mongodb
-   * @return xml elements
-   * @throws QueryException
-   */
-  public Item find(final Str handler, final Str col, final Str query,
-      final Item options, final Str projection) throws QueryException {
-
-    final DB db = getDbHandler(handler);
-    db.requestStart();
+	/**
+	 * just backup function need to remove when cleaning.
+	 * @param handler Database handler
+	 * @param col collection
+	 * @param query conditions
+	 * @param field  projection on Mongodb
+	 * @return xml elements
+	 * @throws QueryException
+	 */
+	public Item find(final Str handler, final Str col, final Str query,
+	        final Str projection) throws QueryException {
+		final DB db = getDbHandler(handler);
+		db.requestStart();
         try {
-          final DBObject object = projection != null ?
-              getDbObjectFromStr(projection) : null;
-
-          final DBCollection coll = db.getCollection(col.toJava());
-          final DBCursor cursor = coll.find(getDbObjectFromStr(query), object);
-
-          if(options != null) {
-            final TokenMap map = new FuncParams(Q_MONGODB, null).parse(options);
-            for(final byte[] key : map) {
-              final String k = Token.string(key);
-              final String v = Token.string(map.get(key));
-              if(k.equals("limit")) {
-                cursor.limit(Token.toInt(v));
-              } else if(k.equals("skip")) {
-                  cursor.skip(Token.toInt(v));
-              } else if(k.equals("sort")) {
-                  BasicDBObject sort = new BasicDBObject(k, v);
-                  cursor.sort((DBObject) sort);
-              } else if(k.equals("explain")) {
-                  cursor.explain();
-                  //System.out.println("explain"+v);
-              }
-            }
-
-          }
-
-          return resultToXml(cursor);
+            return  resultToXml(db.getCollection(col.toJava()).find(
+                    getDbObjectFromStr(query), getDbObjectFromStr(projection)));
         } catch (MongoException e) {
             throw new QueryException(e.getMessage());
         } finally {
                db.requestDone();
         }
-  }
-	private Item parseMap( final Item value) throws QueryException {
-	    final TokenMap map = new FuncParams(Q_MONGODB, null).parse(value);
-	    for(final byte[] key : map) {
-	        final String k = Token.string(key);
-	        final String v = Token.string(map.get(key));
-	    }
-	    return null;
 	}
-  /**
+
+	/**
 	 * Mongodb's findOne() function.
 	 * @param handler
 	 * @param col
@@ -335,7 +265,15 @@ public class MongoDB extends QueryModule {
 	 * @throws QueryException
 	 */
 	public Item findOne(final Str handler, final Str col)throws QueryException {
-	    return findOne(handler, col, null, null);
+	    final DB db = getDbHandler(handler);
+	    db.requestStart();
+        try {
+            return  objectToXml(db.getCollection(col.toJava()).findOne());
+        } catch (MongoException e) {
+            throw new QueryException(e.getMessage());
+        } finally {
+               db.requestDone();
+        }
 	}
 	/**
 	 * Mongodb's findOne({'_id':2}) function with query.
@@ -347,7 +285,16 @@ public class MongoDB extends QueryModule {
 	 */
 	public Item findOne(final Str handler, final Str col, final Str query)
 	        throws QueryException {
-	   return findOne(handler, col, query, null);
+	    final DB db = getDbHandler(handler);
+        db.requestStart();
+        try {
+            return  objectToXml(db.getCollection(col.toJava()).findOne(
+                    getDbObjectFromStr(query)));
+        } catch (MongoException e) {
+            throw new QueryException(e.getMessage());
+        } finally {
+               db.requestDone();
+        }
 	}
 	/**
 	 * findOne with query projection and fields.
@@ -364,13 +311,8 @@ public class MongoDB extends QueryModule {
 	    final DB db = getDbHandler(handler);
         db.requestStart();
         try {
-            final DBObject p = projection != null ?
-                    getDbObjectFromStr(projection) : null;
-            final DBObject q = query != null ?
-                    getDbObjectFromStr(query) : null;
-            final DBCollection coll = db.getCollection(col.toJava());
-            final DBObject cursor = coll.findOne(q, p);
-            return  objectToXml(cursor);
+            return  objectToXml(db.getCollection(col.toJava()).findOne(
+                    getDbObjectFromStr(query), getDbObjectFromStr(projection)));
         } catch (MongoException e) {
             throw new QueryException(e.getMessage());
         } finally {
@@ -404,7 +346,7 @@ public class MongoDB extends QueryModule {
      * Mongodb update with two parameters like update({},{}).
      * @param handler
      * @param col
-     * @param insertString
+     * @param updatestring
      * @throws QueryException
      */
     public void update(final Str handler, final Str col, final Str query,
@@ -503,16 +445,19 @@ public class MongoDB extends QueryModule {
     public Item aggregate(final Str handler, final Str col, final Str first)
             throws QueryException {
         final DB db = getDbHandler(handler);
+        System.out.println(getDbObjectFromStr(first));
         db.requestStart();
         try {
            AggregationOutput agg =  db.getCollection(col.toJava()).aggregate(
                     getDbObjectFromStr(first));
-//           return new FNJson(null, Function._JSON_PARSE,
-//                   Str.get(JSON.serialize(agg))).item(context, null);
-           //Str.get(JSON.serialize(agg));
+           String aggregate = "";
            for(DBObject dbObj: agg.results()) {
-              return objectToXml(dbObj);
+               aggregate = aggregate + JSON.serialize(dbObj);
+               System.out.println(aggregate);
+               return objectToXml(dbObj);
             }
+//           return new FNJson(null, Function._JSON_PARSE,
+//                 Str.get(aggregate)).item(context, null);
         } catch (MongoException e) {
             throw new QueryException(e.getMessage());
         } finally {
