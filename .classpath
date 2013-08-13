@@ -6,7 +6,6 @@
 			<attribute name="maven.pomderived" value="true"/>
 		</attributes>
 	</classpathentry>
-	<classpathentry kind="lib" path="D:/University/summer13/master_project/mongodata/mongo-java-driver-2.12.0-20130327.174355-2.jar" sourcepath="D:/University/summer13/master_project/mongodata/mongo-java-driver-2.12.0-20130327.174355-2-sources.jar"/>
 	<classpathentry combineaccessrules="false" kind="src" path="/basex"/>
 	<classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER/org.eclipse.jdt.internal.debug.ui.launcher.StandardVMType/JavaSE-1.6">
 		<attributes>
@@ -18,5 +17,6 @@
 			<attribute name="maven.pomderived" value="true"/>
 		</attributes>
 	</classpathentry>
+	<classpathentry kind="lib" path="lib/mongo-java-driver-2.12.0-20130327.174355-2.jar"/>
 	<classpathentry kind="output" path="target/classes"/>
 </classpath>
