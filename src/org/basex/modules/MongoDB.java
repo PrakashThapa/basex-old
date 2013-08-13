@@ -230,19 +230,7 @@ public class MongoDB extends QueryModule {
 	 * @throws QueryException
 	 */
 	public Item find(final Str handler, final Str col) throws QueryException {
-
-//		final DBCursor result  = getDbHandler(handler).getCollection(col.toJava()).find();
-//        Item item = resultToXml(result);
-//        return item;
-	    final DB db = getDbHandler(handler);
-	    db.requestStart();
-	    try {
-	        return resultToXml(db.getCollection(col.toJava()).find());
-        } catch (MongoException e) {
-            throw new QueryException(e.getMessage());
-        } finally {
-	           db.requestDone();
-	    }
+	    return find(handler, col, null, null, null);
 	}
 	/**
 	 * MongoDB find() condtion. eg. db.collections.find({'_id':2})
@@ -288,9 +276,11 @@ public class MongoDB extends QueryModule {
         try {
           final DBObject object = projection != null ?
               getDbObjectFromStr(projection) : null;
-
+          final DBObject q = query != null ?
+                  getDbObjectFromStr(query) : null;
+                      
           final DBCollection coll = db.getCollection(col.toJava());
-          final DBCursor cursor = coll.find(getDbObjectFromStr(query), object);
+          final DBCursor cursor = coll.find(q, object);
 
           if(options != null) {
             final TokenMap map = new FuncParams(Q_MONGODB, null).parse(options);
@@ -306,7 +296,7 @@ public class MongoDB extends QueryModule {
                   cursor.sort((DBObject) sort);
               } else if(k.equals("explain")) {
                   cursor.explain();
-                  //System.out.println("explain"+v);
+                  System.out.println("explain"+v);
               }
             }
 
