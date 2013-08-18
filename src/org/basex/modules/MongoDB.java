@@ -275,13 +275,12 @@ public class MongoDB extends QueryModule {
     final DB db = getDbHandler(handler);
     db.requestStart();
         try {
-          final DBObject object = projection != null ?
+          final DBObject p = projection != null ?
               getDbObjectFromStr(projection) : null;
           final DBObject q = query != null ?
                   getDbObjectFromStr(query) : null;
-                      
           final DBCollection coll = db.getCollection(col.toJava());
-          final DBCursor cursor = coll.find(q, object);
+          final DBCursor cursor = coll.find(q, p);
 
           if(options != null) {
             //final TokenMap map = new FuncParams(Q_MONGODB, null).parse(options);
@@ -289,8 +288,6 @@ public class MongoDB extends QueryModule {
             for(final Item key : keys) {
               if(!(key instanceof Str))
                   throw new QueryException("String expected, ...");
-                  
-                  
               final String k = ((Str) key).toJava();
               final Value v = options.get(key, null);
              if(v instanceof Str) {
@@ -302,15 +299,11 @@ public class MongoDB extends QueryModule {
                          throw new QueryException("Invalid value...");
                      }
                  }
-                 
              } else if(v instanceof Map) {
-              
              } else if(v instanceof Str) {
-                 
              } else {
                  throw new QueryException("Invalid value...");
              }
-                 
               if(k.equals("limit")) {
                 //cursor.limit(Token.toInt(v));
               } else if(k.equals("skip")) {
