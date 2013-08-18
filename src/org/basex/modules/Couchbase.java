@@ -16,15 +16,14 @@ import org.basex.query.func.Function;
 import org.basex.query.value.item.Item;
 import org.basex.query.value.item.QNm;
 import org.basex.query.value.item.Str;
+import org.basex.query.value.map.Map;
 import org.basex.util.hash.TokenMap;
-
 
 import com.couchbase.client.CouchbaseClient;
 import com.couchbase.client.protocol.views.Query;
 import com.couchbase.client.protocol.views.View;
 import com.couchbase.client.protocol.views.ViewResponse;
 import com.couchbase.client.protocol.views.ViewRow;
-import com.mongodb.util.JSON;
 
 
 /**
@@ -83,7 +82,7 @@ public class Couchbase extends QueryModule {
     }
     
     /**
-     * convert object into xml elements
+     * Convert object into xml elements.
      * @param o Object
      * @return xml elements
      * @throws QueryException
@@ -130,20 +129,85 @@ public class Couchbase extends QueryModule {
          
     }
     
-    public Item get(final Str handler, Str doc) throws QueryException {
+    public Str get(final Str handler, Str doc) throws QueryException {
         
         CouchbaseClient client = getClient(handler);
         try {
             Object o = client.get(doc.toJava());
             Str json = Str.get(o.toString());
-            System.out.println(json);
-            return new FNJson(null, Function._JSON_PARSE, json).item(context, null);
+            return json;
+//            System.out.println(json);
+//            return new FNJson(null, Function._JSON_PARSE, json).item(context, null);
         } catch (Exception ex) {
             throw new QueryException(ex);
         }
     }
+    public Item getText(final Str handler, final Str doc) {
+        
+        return null;
+    }
+    
+    public Item getBinary(final Str handler, final Str docbin){
+    
+      return null;
+    }
+    public Item putText(final Str handler, final Str key, final Str value) {
+        
+        return null;
+    }
+    public Item putBinary(final Str handler, final Str key, final Str value) {
+        
+        return null;
+    }
+    public Item remove(final Str handler, final Str key) {
+        
+        return null;
+    }
+    public Item createView(final Str handler, final Str docName, final Str viewName) {
+        
+        return createView(handler, docName, viewName);
+    }
+    public Item createView(final Str handler, final Str docName, final Str viewName, final Map options) {
+        
+        return null;
+    }
+    public Item view(final Str handler, final Str path) {
+        
+        return view(handler, path, null);
+    }
+    
+    public Item view(final Str handler, final Str path, final Map options) {
+        
+        return null;
+    }
+    
     public void shutdown(final Str handler) throws QueryException {
 		CouchbaseClient client = getClient(handler);
 		client.shutdown();
 	}
+    
+    
+    /****** testing methods *************************/
+    public Item showviews(final Str handler) throws QueryException {
+        CouchbaseClient client = getClient(handler);
+        View view = client.getView("beer", "brewery_beers");
+        Query query = new Query();
+        query.setIncludeDocs(true).setLimit(5); // include all docs and limit to 5
+        ViewResponse result = client.query(view, query);
+
+        // Iterate over the result and print the key of each document:
+       //create json string with key and value
+        String json ="";
+        for(ViewRow row : result) {
+            final String k = row.getKey();
+            final String v = row.getValue();
+                  
+            json = json+ "{"+k+":"+v+"},";
+          
+          // The full document (as String) is available through row.getDocument();
+        }
+        
+        return new FNJson(null, Function._JSON_PARSE, Str.get(json)).item(context, null);
+        
+    }
 }

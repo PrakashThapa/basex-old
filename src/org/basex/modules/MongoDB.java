@@ -1,7 +1,6 @@
 package org.basex.modules;
 
 import java.net.UnknownHostException;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Set;
 
@@ -10,13 +9,15 @@ import org.basex.query.QueryModule;
 import org.basex.query.func.FNJson;
 import org.basex.query.func.FuncParams;
 import org.basex.query.func.Function;
+import org.basex.query.value.Value;
 import org.basex.query.value.item.Int;
 import org.basex.query.value.item.Item;
 import org.basex.query.value.item.QNm;
 import org.basex.query.value.item.Str;
+import org.basex.query.value.map.Map;
+import org.basex.query.value.type.SeqType;
 import org.basex.util.Token;
 import org.basex.util.hash.TokenMap;
-import org.bson.BSON;
 
 import com.mongodb.AggregationOutput;
 import com.mongodb.BasicDBObject;
@@ -255,7 +256,7 @@ public class MongoDB extends QueryModule {
    * @throws QueryException
    */
   public Item find(final Str handler, final Str col, final Str query,
-      final Item options) throws QueryException {
+      final Map options) throws QueryException {
     return find(handler, col, query, options, null);
   }
 
@@ -269,7 +270,7 @@ public class MongoDB extends QueryModule {
    * @throws QueryException
    */
   public Item find(final Str handler, final Str col, final Str query,
-      final Item options, final Str projection) throws QueryException {
+      final Map options, final Str projection) throws QueryException {
 
     final DB db = getDbHandler(handler);
     db.requestStart();
@@ -283,16 +284,41 @@ public class MongoDB extends QueryModule {
           final DBCursor cursor = coll.find(q, object);
 
           if(options != null) {
-            final TokenMap map = new FuncParams(Q_MONGODB, null).parse(options);
-            for(final byte[] key : map) {
-              final String k = Token.string(key);
-              final String v = Token.string(map.get(key));
+            //final TokenMap map = new FuncParams(Q_MONGODB, null).parse(options);
+            Value keys = options.keys();
+            for(final Item key : keys) {
+              if(!(key instanceof Str))
+                  throw new QueryException("String expected, ...");
+                  
+                  
+              final String k = ((Str) key).toJava();
+              final Value v = options.get(key, null);
+             if(v instanceof Str) {
+                 if(k.equals("limit")) {
+                     if(v.type().instanceOf(SeqType.ITR)) {
+                         long l = ((Item) v).itr(null);
+                         cursor.limit((int) l);
+                     } else {
+                         throw new QueryException("Invalid value...");
+                     }
+                 }
+                 
+             } else if(v instanceof Map) {
+              
+             } else if(v instanceof Str) {
+                 
+             } else {
+                 throw new QueryException("Invalid value...");
+             }
+                 
               if(k.equals("limit")) {
-                cursor.limit(Token.toInt(v));
+                //cursor.limit(Token.toInt(v));
               } else if(k.equals("skip")) {
-                  cursor.skip(Token.toInt(v));
+                  //cursor.skip(Token.toInt(v));
               } else if(k.equals("sort")) {
                   BasicDBObject sort = new BasicDBObject(k, v);
+                  sort.append("name", "-1");
+                  
                   cursor.sort((DBObject) sort);
               } else if(k.equals("explain")) {
                   cursor.explain();
