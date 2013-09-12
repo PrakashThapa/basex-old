@@ -3,4 +3,5 @@
 *.jar
 *.war
 *.ear
-*.settings
+*.settingsMongoDB2.java
+src/org/basex/modules/MongoDB2.java

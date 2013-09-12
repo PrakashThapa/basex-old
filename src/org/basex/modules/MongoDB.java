@@ -281,7 +281,6 @@ public class MongoDB extends QueryModule {
                   getDbObjectFromStr(query) : null;
           final DBCollection coll = db.getCollection(col.toJava());
           final DBCursor cursor = coll.find(q, p);
-
           if(options != null) {
             //final TokenMap map = new FuncParams(Q_MONGODB, null).parse(options);
             Value keys = options.keys();
@@ -311,11 +310,10 @@ public class MongoDB extends QueryModule {
               } else if(k.equals("sort")) {
                   BasicDBObject sort = new BasicDBObject(k, v);
                   sort.append("name", "-1");
-                  
                   cursor.sort((DBObject) sort);
               } else if(k.equals("explain")) {
                   cursor.explain();
-                  System.out.println("explain"+v);
+                  System.out.println("explain" + v);
               }
             }
 
