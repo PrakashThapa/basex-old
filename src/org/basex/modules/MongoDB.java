@@ -576,4 +576,11 @@ public class MongoDB extends QueryModule {
 			throw new QueryException("Unknown MongoDB handler: '" + ch + "'");
 		client.close();
 	}
+	public void  test(final Str x, final Value names)
+	{
+        for(Value s : names){
+            System.out.println(s.toString());
+        }
+        System.out.println(x.toJava());
+    }
 }

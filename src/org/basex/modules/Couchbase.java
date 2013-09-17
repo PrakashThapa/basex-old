@@ -13,6 +13,7 @@ import net.spy.memcached.internal.OperationFuture;
 
 import org.basex.query.QueryException;
 import org.basex.query.QueryModule;
+import org.basex.query.expr.Instance;
 import org.basex.query.func.FNJson;
 import org.basex.query.func.Function;
 import org.basex.query.value.Value;
@@ -48,7 +49,7 @@ public class Couchbase extends QueryModule {
 
     private ArrayList<URI> nodes = new ArrayList<URI>();
     private int timeout = 0;
-    public Str connection(final Str url, final Str bucket, final Str password) 
+    public Str connection(final Str url, final Str bucket, final Str password)
             throws Exception {
 //        String handler = "Client" + couchbaseclients.size();
 //        System.out.println(handler);
@@ -70,12 +71,12 @@ public class Couchbase extends QueryModule {
           }
     }
     /**
-     * get CouchbaseClinet from the hashmap.  
+     * get CouchbaseClinet from the hashmap.
      * @param handler
      * @return
      * @throws QueryException
      */
-    private CouchbaseClient getClient(Str handler) throws QueryException {
+    private CouchbaseClient getClient(final Str handler) throws QueryException {
         String ch = handler.toJava();
         try {
             final CouchbaseClient client = couchbaseclients.get(ch);
@@ -180,7 +181,8 @@ public class Couchbase extends QueryModule {
         OperationFuture<Boolean> result = null;
        checkJson(doc);
         try {
-          //OperationFuture<Boolean> appendResult = client.append(key.toJava(), doc.toJava());
+//          OperationFuture<Boolean> appendResult = client.append(
+//            key.toJava(), doc.toJava());
 //          if(options != null) {
 //              Value keys = options.keys();
 //              for(final Item mapKey : keys) {
@@ -231,10 +233,15 @@ public class Couchbase extends QueryModule {
         CouchbaseClient client = getClient(handler);
         try {
             OperationFuture<Boolean> result = client.delete(key.toJava());
+            String msg = result.getStatus().getMessage();
+            if(result.get().booleanValue()) {
+                return Str.get(msg);
+            } else {
+                throw new QueryException("operation fail:" + msg);
+            }
         } catch (Exception ex) {
             throw new QueryException(ex);
         }
-       return null;
     }
     public Item get(final Str handler, final Str key) throws QueryException {
         CouchbaseClient client = getClient(handler);
@@ -292,24 +299,23 @@ public class Couchbase extends QueryModule {
             throw new QueryException(ex);
         }
     }
-    public Item getblock(Str handler, Item options) throws QueryException {
+    public Item getbulk(Str handler, Value options) throws QueryException {
          CouchbaseClient client = getClient(handler);
          try {
-             if(options != null) {
-                Object keys = options.toJava();
-                @SuppressWarnings("unchecked")
-                java.util.Map<String, Object> s= client.getBulk(
-                       (Collection<String>) keys);
-               if(!s.isEmpty()) {
-                  for(String k: s.keySet()){
-                      
-                  }
-               }
-             } else {
-                 throw new QueryException("no options defined");
+             if(options.size() < 1) {
+                 throw new QueryException("key set is empty");
              }
-        } catch (Exception e) {
-            // TODO: handle exception
+             List<String> keys = new ArrayList<String>();
+             for (Value v: options) {
+                String s = (String) v.toJava();
+                keys.add(s);
+             }
+             //java.util.Map<String, Object> s = client.getBulk(keys);
+             Object s = client.getBulk(keys);
+             //return new FNJson(null, Function._JSON_PARSE, Str.get(json)).item(context, null);
+             
+         } catch (Exception ex) {
+            throw new QueryException(ex);
         }
         return handler;
         
