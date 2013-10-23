@@ -4,18 +4,25 @@ import java.net.UnknownHostException;
 import java.util.HashMap;
 import java.util.Set;
 
+
+import org.basex.query.QueryContext;
 import org.basex.query.QueryException;
 import org.basex.query.QueryModule;
+import org.basex.query.expr.Expr;
+import org.basex.query.expr.ParseExpr;
 import org.basex.query.func.FNJson;
-import org.basex.query.func.FuncParams;
 import org.basex.query.func.Function;
+import org.basex.query.func.StandardFunc;
+import org.basex.query.iter.ValueIter;
 import org.basex.query.value.Value;
 import org.basex.query.value.item.Int;
 import org.basex.query.value.item.Item;
 import org.basex.query.value.item.QNm;
 import org.basex.query.value.item.Str;
 import org.basex.query.value.map.Map;
+import org.basex.query.value.node.ANode;
 import org.basex.query.value.type.SeqType;
+import org.basex.util.InputInfo;
 import org.basex.util.Token;
 import org.basex.util.hash.TokenMap;
 
@@ -164,7 +171,9 @@ public class MongoDB extends QueryModule {
 	    if(result != null) {
             try {
                 final Str json = Str.get(JSON.serialize(result));
-                return new FNJson(null, Function._JSON_PARSE, json).item(context, null);
+                //InputInfo ii = new InputInfo(null);
+                //return new FNJson(null, Function._JSON_PARSE, json).item(context, null);
+                return new FNJson(null, Function._JSON_PARSE_PT, json).item(context, null);
             } catch (final Exception ex) {
                 throw new QueryException(ex);
             }
@@ -183,7 +192,8 @@ public class MongoDB extends QueryModule {
 	    if(object != null) {
 	        try {
 	            final Str json = Str.get(JSON.serialize(object));
-	            return new FNJson(null, Function._JSON_PARSE, json).item(context, null);
+	            //return new FNJson(null, Function._JSON_PARSE, json).item(context, null);
+	            return new FNJson(null, Function._JSON_PARSE_PT, json).item(context, null);
 
 	        } catch (final Exception ex) {
 	            throw new QueryException(ex);
@@ -205,6 +215,30 @@ public class MongoDB extends QueryModule {
     } catch (JSONParseException e) {
       throw new QueryException("Invalid JSON syntax: " + string);
 		}
+	}
+	/**/
+	public final ValueIter cnode(final Expr e) throws QueryException {
+	    final SerializerOptions sopts = new SerializerOptions();
+	    final ANode node =  new FNJson(null, Function._JSON_SERIALIZE, e).checkNode(e, null);
+        return node.iter();
+	  }
+	
+	public Str jsonNode(final Item json) {
+	    
+	    if(json instanceof ANode) {
+	    try {
+            return (Str) new FNJson(null, Function._JSON_SERIALIZE, node).item(context, null);
+        } catch (QueryException e) {
+            // TODO Auto-generated catch block
+            e.printStackTrace();
+        }
+	    }
+//        try {
+//            //Item x = new FNJson(null, Function._JSON_SERIALIZE_PT, json).item(context, null);
+//        } catch (QueryException e) {
+//            e.printStackTrace();
+//        }
+	    return null;
 	}
 
 	/**
@@ -326,15 +360,7 @@ public class MongoDB extends QueryModule {
                db.requestDone();
         }
   }
-	private Item parseMap( final Item value) throws QueryException {
-	    final TokenMap map = new FuncParams(Q_MONGODB, null).parse(value);
-	    for(final byte[] key : map) {
-	        final String k = Token.string(key);
-	        final String v = Token.string(map.get(key));
-	    }
-	    return null;
-	}
-  /**
+	/**
 	 * Mongodb's findOne() function.
 	 * @param handler
 	 * @param col
