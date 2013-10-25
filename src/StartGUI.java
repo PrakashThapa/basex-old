@@ -1,10 +1,6 @@
 import org.basex.BaseXGUI;
-
-public class StartGUI {
-	/** main gui.
-	 * @param args
-	 */
-	public static void main(String[] args) throws Exception {
-		new BaseXGUI();
-	}
+class StartGUI {
+    public static void main(final String[] args) throws Exception {
+        new BaseXGUI();
+        }
 }

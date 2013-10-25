@@ -4,27 +4,17 @@ import java.net.UnknownHostException;
 import java.util.HashMap;
 import java.util.Set;
 
-
-import org.basex.query.QueryContext;
 import org.basex.query.QueryException;
 import org.basex.query.QueryModule;
-import org.basex.query.expr.Expr;
-import org.basex.query.expr.ParseExpr;
 import org.basex.query.func.FNJson;
 import org.basex.query.func.Function;
-import org.basex.query.func.StandardFunc;
-import org.basex.query.iter.ValueIter;
 import org.basex.query.value.Value;
 import org.basex.query.value.item.Int;
 import org.basex.query.value.item.Item;
 import org.basex.query.value.item.QNm;
 import org.basex.query.value.item.Str;
 import org.basex.query.value.map.Map;
-import org.basex.query.value.node.ANode;
 import org.basex.query.value.type.SeqType;
-import org.basex.util.InputInfo;
-import org.basex.util.Token;
-import org.basex.util.hash.TokenMap;
 
 import com.mongodb.AggregationOutput;
 import com.mongodb.BasicDBObject;
@@ -46,30 +36,21 @@ import com.mongodb.util.JSONParseException;
  */
 public class MongoDB extends QueryModule {
   /** URL of this module. */
-  private static final String MONGO_URL = "http://basex.org/modules/mongo-db";
+  private static final String MONGO_URL = "http://basex.org/modules/mongodb";
   /** QName of MongoDB options. */
   private static final QNm Q_MONGODB = QNm.get("mongodb", "options", MONGO_URL);
-  /**
-     * mongoclient instances.
-     */
-
-    private HashMap<String, MongoClient> mongoClients =
+  /** mongoclient instances. */
+  private HashMap<String, MongoClient> mongoClients =
             new HashMap<String, MongoClient>();
-
-    /**
-     * DB instances instances.
-     */
-    private HashMap<String, DB> dbs =
-            new HashMap<String, DB>();
-
-    /**
-     * Mongodb Connection from URLstructure: mongodb://root:root@localhost/test.
-     * @param url of Mongodb connection
-     * @return conncetion DB connection handler of Mongodb
-     * @throws QueryException
-     */
-
-    public Str connection(final Str url) throws QueryException {
+  /** DB instances instances. */
+  private HashMap<String, DB> dbs = new HashMap<String, DB>();
+  /**
+   * Mongodb Connection from URLstructure: mongodb://root:root@localhost/test.
+   * @param url of Mongodb connection
+   * @return conncetion DB connection handler of Mongodb
+   * @throws QueryException
+   */
+  public Str connection(final Str url) throws QueryException {
         MongoClientURI uri = new MongoClientURI(url.toJava());
         String handler = "Client" + mongoClients.size();
         try {
@@ -97,7 +78,6 @@ public class MongoDB extends QueryModule {
                   throw new QueryException(ex);
               }
         }
-
   /**
    * Mongodb connection when provided with host port and database separately.
    *
@@ -122,45 +102,41 @@ public class MongoDB extends QueryModule {
       throw new QueryException(ex);
     }
   }
-
-	/**
-	 * DB selection with mongoclient instance.
-	 * @param handler MongoClient handler of hashmap
-	 * @param dbName Databasename to connect
-	 * @return DB handler of hashmap
-	 * @throws QueryException
-	 */
-	public Str selectDb(final Str handler, final Str dbName) throws QueryException {
-		String ch = handler.toJava();
-		// boolean auth = db.authenticate(username,
-		// (char[])password.toCharArray());
-		final MongoClient client = mongoClients.get(ch);
-		if(client == null)
-			throw new QueryException("Unknown MongoDB handler: '" + ch + "'");
-		final String dbh = "DB" + dbs.size();
-		try {
-			DB db = client.getDB(dbName.toJava());
-			dbs.put(dbh, db);
-			return Str.get(dbh);
-
-		} catch (final MongoException ex) {
-			throw new QueryException(ex);
-		}
-	}
-
-	/**
-	 * get DB handler from hashmap.
-	 * @param handler hashmap key in Str
-	 * @return DB handler
-	 * @throws QueryException
-	 */
-	private DB getDbHandler(final Str handler) throws QueryException {
-		final DB db = dbs.get(handler.toJava());
-		if(db == null)
-			throw new QueryException("Unknown database handler: '" + handler.toJava() + "'");
-		return db;
-	}
-
+  /**
+   * DB selection with mongoclient instance.
+   * @param handler MongoClient handler of hashmap
+   * @param dbName Databasename to connect
+   * @return DB handler of hashmap
+   * @throws QueryException
+   */
+  public Str selectDb(final Str handler, final Str dbName)
+          throws QueryException {
+      String ch = handler.toJava();
+      final MongoClient client = mongoClients.get(ch);
+      if(client == null)
+          throw new QueryException("Unknown MongoDB handler: '" + ch + "'");
+      final String dbh = "DB" + dbs.size();
+      try {
+          DB db = client.getDB(dbName.toJava());
+          dbs.put(dbh, db);
+          return Str.get(dbh);
+      } catch (final Exception ex) {
+          throw new QueryException(ex);
+      }
+  }
+  /**
+   * get DB handler from hashmap.
+   * @param handler hashmap key in Str
+   * @return DB handler
+   * @throws QueryException
+   */
+  private DB getDbHandler(final Str handler) throws QueryException {
+      final DB db = dbs.get(handler.toJava());
+      if(db == null)
+          throw new QueryException("Unknown database handler: '" +
+      handler.toJava() + "'");
+      return db;
+    }
 	/**
 	 * Collection result(DBCursor) into xml item.
 	 * @param result DBCursor
@@ -173,7 +149,8 @@ public class MongoDB extends QueryModule {
                 final Str json = Str.get(JSON.serialize(result));
                 //InputInfo ii = new InputInfo(null);
                 //return new FNJson(null, Function._JSON_PARSE, json).item(context, null);
-                return new FNJson(null, Function._JSON_PARSE_PT, json).item(context, null);
+                return new FNJson(null, null, Function._JSON_PARSE, json).
+                        item(context, null);
             } catch (final Exception ex) {
                 throw new QueryException(ex);
             }
@@ -193,7 +170,10 @@ public class MongoDB extends QueryModule {
 	        try {
 	            final Str json = Str.get(JSON.serialize(object));
 	            //return new FNJson(null, Function._JSON_PARSE, json).item(context, null);
-	            return new FNJson(null, Function._JSON_PARSE_PT, json).item(context, null);
+	            //return new FNJson(null, Function._JSON_PARSE_PT, json).
+	            //item(context, null);
+	            return new FNJson(null, null, Function._JSON_PARSE, json).
+	                    item(context, null);
 
 	        } catch (final Exception ex) {
 	            throw new QueryException(ex);
@@ -216,15 +196,13 @@ public class MongoDB extends QueryModule {
       throw new QueryException("Invalid JSON syntax: " + string);
 		}
 	}
-	/**/
+	/*
 	public final ValueIter cnode(final Expr e) throws QueryException {
 	    final SerializerOptions sopts = new SerializerOptions();
 	    final ANode node =  new FNJson(null, Function._JSON_SERIALIZE, e).checkNode(e, null);
         return node.iter();
 	  }
-	
 	public Str jsonNode(final Item json) {
-	    
 	    if(json instanceof ANode) {
 	    try {
             return (Str) new FNJson(null, Function._JSON_SERIALIZE, node).item(context, null);
@@ -240,7 +218,7 @@ public class MongoDB extends QueryModule {
 //        }
 	    return null;
 	}
-
+*/
 	/**
      * Return all the collections in current database.
      * @param string
@@ -587,7 +565,7 @@ public class MongoDB extends QueryModule {
 	 * @throws QueryException
 	 */
 	public Item jsonToXml(final Str json) throws QueryException {
-		return new FNJson(null, Function._JSON_PARSE, json).item(context, null);
+		return new FNJson(null, null, Function._JSON_PARSE, json).item(context, null);
 	}
 
 	/**
@@ -602,9 +580,8 @@ public class MongoDB extends QueryModule {
 			throw new QueryException("Unknown MongoDB handler: '" + ch + "'");
 		client.close();
 	}
-	public void  test(final Str x, final Value names)
-	{
-        for(Value s : names){
+	public void  test(final Str x, final Value names) {
+        for(Value s : names) {
             System.out.println(s.toString());
         }
         System.out.println(x.toJava());
