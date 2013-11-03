@@ -6,6 +6,8 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map.Entry;
+import java.util.concurrent.TimeUnit;
+
 import net.spy.memcached.internal.OperationFuture;
 
 import org.basex.query.QueryException;
@@ -25,7 +27,6 @@ import com.couchbase.client.protocol.views.Stale;
 import com.couchbase.client.protocol.views.View;
 import com.couchbase.client.protocol.views.ViewDesign;
 import com.couchbase.client.protocol.views.ViewResponse;
-import com.couchbase.client.protocol.views.ViewRow;
 
 
 /**
@@ -35,38 +36,41 @@ import com.couchbase.client.protocol.views.ViewRow;
  * @author Prakash Thapa
  */
 public class Couchbase extends QueryModule {
-  /** URL of this module. */
- //private static final String COUCHBASE_URL = "http://basex.org/modules/couchbase";
-  /** QName of Couchbase options. */
-  //private static final QNm Q_COUCHBASE = QNm.get("couchbase", "options", COUCHBASE_URL);
-  private HashMap<String, CouchbaseClient> couchbaseclients =
+    /** URL of this module. */
+    //private static final String COUCHBASE_URL = "http://basex.org/modules/couchbase";
+    /** QName of Couchbase options. */
+//    private static final QNm Q_COUCHBASE = QNm.get("couchbase", "options",
+//            COUCHBASE_URL);
+    /** Couchbase instances. */
+    private HashMap<String, CouchbaseClient> couchbaseclients =
             new HashMap<String, CouchbaseClient>();
+    /** nodes array. */
     //private ArrayList<URI> nodes = new ArrayList<URI>();
+    /**
+     * Couchbase connection with url host bucket.
+     * @param url
+     * @param bucket
+     * @param password
+     * @return Connection handler of Couchbase url
+     * @throws Exception
+     */
     public Str connection(final Str url, final Str bucket, final Str password)
             throws Exception {
-//        String handler = "Client" + couchbaseclients.size();
-//        System.out.println(handler);
-//        return Str.get(handler);
-     try {
-         String handler = "Client" + couchbaseclients.size();
-         List<URI> hosts = Arrays.asList(new URI(
-                 url.toJava())
-         );
-//         CouchbaseConnectionFactory cf = new CouchbaseConnectionFactory(
-//                 hosts, bucket.toJava(), password.toJava());
-//          CouchbaseClient client    =   new CouchbaseClient(cf);
+        try {
+            String handler = "Client" + couchbaseclients.size();
+            List<URI> hosts = Arrays.asList(new URI(url.toJava()));
             CouchbaseClient client = new CouchbaseClient(hosts,
-          bucket.toJava(), password.toJava());
-          couchbaseclients.put(handler, client);
-          return Str.get(handler);
-          } catch (Exception ex) {
+            bucket.toJava(), password.toJava());
+            couchbaseclients.put(handler, client);
+            return Str.get(handler);
+        } catch (Exception ex) {
               throw new QueryException(ex);
           }
     }
     /**
      * get CouchbaseClinet from the hashmap.
      * @param handler
-     * @return
+     * @return connection instance.
      * @throws QueryException
      */
     private CouchbaseClient getClient(final Str handler) throws QueryException {
@@ -76,7 +80,6 @@ public class Couchbase extends QueryModule {
             if(client == null)
                 throw new QueryException("Unknown CouchbaseClient handler: '" + ch + "'");
             return client;
-
         } catch (final Exception ex) {
             throw new QueryException(ex);
         }
@@ -89,7 +92,7 @@ public class Couchbase extends QueryModule {
     private void checkJson(final Str doc) throws QueryException {
         try {
             new FNJson(null, null, Function._JSON_PARSE,
-                    doc).item(context, null);
+                    doc).item(queryContext, null);
         } catch (Exception e) {
             throw new QueryException("document is not in json format");
         }
@@ -106,7 +109,7 @@ public class Couchbase extends QueryModule {
         return put(handler, key, doc, "add");
     }
     /**
-     * 
+     * Set method of Couchbase.
      * @param handler
      * @param key
      * @param doc
@@ -118,11 +121,11 @@ public class Couchbase extends QueryModule {
         return put(handler, key, doc, "set");
     }
     /**
-     * 
+     * Replace method of Couchbase document with condition.
      * @param handler
      * @param key
      * @param doc
-     * @return
+     * @return Item
      * @throws QueryException
      */
     public Item replace(final Str handler, final Str key, final Str doc)
@@ -130,11 +133,11 @@ public class Couchbase extends QueryModule {
        return put(handler, key, doc, "replace");
     }
     /**
-     * 
+     * Append documnt with key. 
      * @param handler
      * @param key
      * @param doc
-     * @return
+     * @return Item
      * @throws QueryException
      */
     public Item append(final Str handler, final Str key, final Str doc)
@@ -142,12 +145,12 @@ public class Couchbase extends QueryModule {
        return put(handler, key, doc, null);
     }
     /**
-     * 
+     * document addition.
      * @param handler
      * @param key
      * @param doc
-     * @param options
-     * @return 
+     * @param options {set,put,append,replace}
+     * @return Item
      * @throws QueryException
      */
     public Item put(final Str handler, final Str key, final Str doc,
@@ -156,23 +159,6 @@ public class Couchbase extends QueryModule {
         OperationFuture<Boolean> result = null;
        checkJson(doc);
         try {
-//          OperationFuture<Boolean> appendResult = client.append(
-//            key.toJava(), doc.toJava());
-//          if(options != null) {
-//              Value keys = options.keys();
-//              for(final Item mapKey : keys) {
-//                  if(!(key instanceof Str))
-//                      throw new QueryException("String expected, ...");
-//                  final String k = ((Str) mapKey).toJava();
-//                  final Value v = options.get(key, null);
-//                  if(k.equals("type")){
-//                      if(v.type().instanceOf(SeqType.STR)) {
-//                          System.out.println(v.toJava());
-//                      }
-//                  }
-//              }
-//          } else {
-//          }
             if(type != null) {
                 if(type.equals("add")) {
                    client.add(
@@ -193,8 +179,6 @@ public class Couchbase extends QueryModule {
             }
             String msg = result.getStatus().getMessage();
             if(result.get().booleanValue()) {
-                //query successfully executed
-                //return resultItem(result);
                 return Str.get(msg);
             } else {
                 throw new QueryException("operation fail " + msg);
@@ -202,22 +186,14 @@ public class Couchbase extends QueryModule {
         } catch (Exception ex) {
             throw new QueryException(ex);
         }
-        //return null;
     }
-    public Item delete(final Str handler, final Str key) throws QueryException {
-        CouchbaseClient client = getClient(handler);
-        try {
-            OperationFuture<Boolean> result = client.delete(key.toJava());
-            String msg = result.getStatus().getMessage();
-            if(result.get().booleanValue()) {
-                return Str.get(msg);
-            } else {
-                throw new QueryException("operation fail:" + msg);
-            }
-        } catch (Exception ex) {
-            throw new QueryException(ex);
-        }
-    }
+    /**
+     * get document with key.
+     * @param handler
+     * @param key
+     * @return Item
+     * @throws QueryException
+     */
     public Item get(final Str handler, final Str key) throws QueryException {
         CouchbaseClient client = getClient(handler);
         try {
@@ -226,7 +202,7 @@ public class Couchbase extends QueryModule {
                  Str json = Str.get((String) result);
                 try {
                     return new FNJson(null, null, Function._JSON_PARSE,
-                            json).item(context, null);
+                            json).item(queryContext, null);
                 } catch (Exception e) {
                     throw new QueryException("The result is not in json Format");
                 }
@@ -237,7 +213,7 @@ public class Couchbase extends QueryModule {
         }
     }
     /**
-     * 
+     * Get document with options.
      * @param handler
      * @param doc
      * @param options
@@ -265,30 +241,29 @@ public class Couchbase extends QueryModule {
             }
             final Object o = client.get(doc.toJava());
             if(o != null) {
-             //return get(client, doc);
                 return Str.get(o.toString());
             } else
                 throw new QueryException("Element is empty");
-            //return new FNJson(null, Function._JSON_PARSE, json).item(context, null);
         } catch (Exception ex) {
             throw new QueryException(ex);
         }
     }
-    public Item getbulk(final Str handler, final Value options) throws QueryException {
-         //CouchbaseClient client = getClient(handler);
+    public Item getbulk(final Str handler, final Item options) throws QueryException {
+         CouchbaseClient client = getClient(handler);
          try {
              if(options.size() < 1) {
                  throw new QueryException("key set is empty");
              }
+             System.out.println(options.size());
              List<String> keys = new ArrayList<String>();
              for (Value v: options) {
                 String s = (String) v.toJava();
                 keys.add(s);
              }
-             //java.util.Map<String, Object> s = client.getBulk(keys);
-             //Object s = client.getBulk(keys);
-             //return new FNJson(null, Function._JSON_PARSE, Str.get(json))
-             //.item(context, null);
+//             java.util.Map<String, Object> s = client.getBulk(keys);
+//             Object s1 = client.getBulk(keys);
+//             return new FNJson(null, Function._JSON_PARSE, Str.get(s2)).
+//                     item(context, null);
          } catch (Exception ex) {
             throw new QueryException(ex);
         }
@@ -305,22 +280,25 @@ public class Couchbase extends QueryModule {
         return delete(handler, key);
     }
     /**
-     * insert Binary Object in database.
+     * Delete document by document key.
      * @param handler
-     * @param docbin
+     * @param key
      * @return
      * @throws QueryException
      */
-    public Item getBinary(final Str handler, final Str docbin) throws QueryException {
+    public Item delete(final Str handler, final Str key) throws QueryException {
         CouchbaseClient client = getClient(handler);
-        client.get("s");
-      return null;
-    }
-    public Item putText(final Str handler, final Str key, final Str value) {
-        return null;
-    }
-    public Item putBinary(final Str handler, final Str key, final Str value) {
-        return null;
+        try {
+            OperationFuture<Boolean> result = client.delete(key.toJava());
+            String msg = result.getStatus().getMessage();
+            if(result.get().booleanValue()) {
+                return Str.get(msg);
+            } else {
+                throw new QueryException("operation fail:" + msg);
+            }
+        } catch (Exception ex) {
+            throw new QueryException(ex);
+        }
     }
     /**
      * Create view without reduce method.
@@ -422,7 +400,7 @@ public class Couchbase extends QueryModule {
 //            }
             Str json = mapToJson(map);
             return new FNJson(null, null, Function._JSON_PARSE, json).
-                    item(context, null);
+                    item(queryContext, null);
         } catch (Exception e) {
             throw new QueryException(e);
         }
@@ -451,52 +429,28 @@ public class Couchbase extends QueryModule {
      * @throws QueryException
      */
     public void shutdown(final Str handler) throws QueryException {
-        CouchbaseClient client = getClient(handler);
-        client.shutdown();
+        shutdown(handler, null);
     }
-    /****** testing methods.
-     * @throws QueryException *************************/
-    public Str test(final Map options) throws QueryException {
-        if(options != null) {
-            Value keys = options.keys();
-            for(final Item key : keys) {
-                if(!(key instanceof Str))
-                    throw new QueryException("String expected, ...");
-                final String k = ((Str) key).toJava();
-                final Value v = options.get(key, null);
-                if(k.equals("type")) {
-                    return (Str) v;
-                }
+    /**
+     *  close database connection after certain time.
+     * @param handler
+     * @param time in seconds
+     * @throws QueryException
+     */
+    public void shutdown(final Str handler, final Item time)
+            throws QueryException {
+        CouchbaseClient client = getClient(handler);
+        if(time != null) {
+            if(!time.type().instanceOf(SeqType.ITR)) {
+                throw new QueryException("Time is not valid, ...");
             }
+            long seconds = ((Item) time).itr(null);
+            boolean result = client.shutdown(seconds, TimeUnit.SECONDS);
+            if(!result) {
+                throw new QueryException("cannot be shutdown now");
+            }
+        } else {
+            client.shutdown();
         }
-        return null;
-    }
-    public Item showviews(final Str handler) throws QueryException {
-        CouchbaseClient client = getClient(handler);
-        View view = client.getView("beer", "brewery_beers");
-        Query query = new Query();
-        query.setIncludeDocs(true).setLimit(5); // include all docs and limit to 5
-        ViewResponse result = client.query(view, query);
-
-        // Iterate over the result and print the key of each document:
-       //create json string with key and value
-        String json = "";
-        for(ViewRow row : result) {
-            final String k = row.getKey();
-            final String v = row.getValue();
-            json = json + "{" + k + ":" + v + "},";
-          // The full document (as String) is available through row.getDocument();
-        }
-        return new FNJson(null, null, Function._JSON_PARSE, Str.get(json)).
-                item(context, null);
-    }
-    //tests
-    public Str getView(final Str handler) throws QueryException {
-        CouchbaseClient client = getClient(handler);
-        View view = client.getView("Beer", "brewery_beers");
-        Query query = new Query();
-        ViewResponse result = client.query(view, query);
-        Str json = Str.get(result.toString());
-        return json;
     }
 }

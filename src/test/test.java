@@ -5,9 +5,12 @@ import com.mongodb.DBCollection;
 import com.mongodb.DBCursor;
 import com.mongodb.MongoClient;
 import com.mongodb.util.JSON;
-
-
- class Test {
+/**
+ *
+ * @author PP
+ *
+ */
+public class Test{
     public static void main(final String[] args) throws Exception {
         /**** Connect to MongoDB ****/
         // Since 2.10.0, uses MongoClient
