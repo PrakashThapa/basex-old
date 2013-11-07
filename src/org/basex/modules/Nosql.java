@@ -1,8 +1,12 @@
 package org.basex.modules;
 
+import org.basex.build.JsonOptions;
+import org.basex.build.JsonOptions.JsonFormat;
 import org.basex.build.JsonParserOptions;
+import org.basex.io.parse.json.JsonConverter;
 import org.basex.modules.NosqlOptions.NosqlFormat;
 import org.basex.query.QueryException;
+import org.basex.query.QueryIOException;
 import org.basex.query.QueryModule;
 import org.basex.query.func.FNJson;
 import org.basex.query.func.FuncOptions;
@@ -86,25 +90,29 @@ class Nosql extends QueryModule {
      * @throws QueryException
      */
     protected Item finalResult(final Str json, final NosqlOptions opt)
-            throws QueryException {
+            throws Exception {
 //        final JsonParserOptions jopts = new JsonParserOptions();
 //        Object pt = opt.get(NosqlOptions.FORMAT2);
 //        new FuncOptions(qnmOptions, null).parse((Item) pt, jopts);
             try {
                 if(opt != null) {
                     if(opt.get(NosqlOptions.TYPE) == NosqlFormat.XML) {
-                        return new FNJson(staticContext, null,
-                                Function._JSON_PARSE, json).
-                                item(queryContext, null);
+                        final JsonParserOptions opts = new JsonParserOptions();
+                        opts.set(JsonOptions.FORMAT, opt.get(JsonOptions.FORMAT));
+                        return JsonConverter.convert(json.string(), opts);
+
+                        //return new FNJson(staticContext, null,
+                        //        Function._JSON_PARSE, json).
+                        //        item(queryContext, null);
                     } else {
-                        //return json;
+                        return json;
                         //just change for formatting of josn
-                        Item xXml = new FNJson(staticContext, null,
-                                Function._JSON_PARSE, json).
-                                item(queryContext, null);
-                        return new FNJson(staticContext, null,
-                                Function._JSON_SERIALIZE, xXml).
-                                item(queryContext, null);
+//                        Item xXml = new FNJson(staticContext, null,
+//                                Function._JSON_PARSE, json).
+//                                item(queryContext, null);
+//                        return new FNJson(staticContext, null,
+//                                Function._JSON_SERIALIZE, xXml).
+//                                item(queryContext, null);
                     }
                 }
                 return new FNJson(staticContext, null, Function._JSON_PARSE, json).

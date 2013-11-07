@@ -175,7 +175,7 @@ public class MongoDB extends Nosql {
             return null;
     }
     private Item returnResult(final Str handler, final Str json)
-            throws QueryException {
+            throws Exception {
         NosqlOptions opt =   getMongoOption(handler);
         if(json != null) {
                 if(opt != null) {
@@ -415,10 +415,10 @@ public class MongoDB extends Nosql {
      * @param col Collection name
      * @param insertString string to insert in json formart.
      * @return
-     * @throws QueryException
+     * @throws Exception 
      */
     public Item insert(final Str handler, final Str col, final Str insertString)
-            throws QueryException {
+            throws Exception {
         final DB db = getDbHandler(handler);
         db.requestStart();
         try {
@@ -437,10 +437,10 @@ public class MongoDB extends Nosql {
      * @param col
      * @param insertString
      * @return Item
-     * @throws QueryException
+     * @throws Exception 
      */
     public Item update(final Str handler, final Item col, final Item query,
-            final Str updatestring) throws QueryException {
+            final Str updatestring) throws Exception {
         final DB db = getDbHandler(handler);
         db.requestStart();
         try {
@@ -462,11 +462,11 @@ public class MongoDB extends Nosql {
      * @param upsert true/false for mongodb upsert
      * @param multi true/false for mongodb multi
      * @return Item
-     * @throws QueryException
+     * @throws Exception 
      */
     public Item update(final Str handler, final Item col, final Item query,
             final Str updatestring, final boolean upsert, final boolean multi)
-                    throws QueryException {
+                    throws Exception {
         final DB db = getDbHandler(handler);
         db.requestStart();
         try {
@@ -487,10 +487,10 @@ public class MongoDB extends Nosql {
      * @param col collection name
      * @param saveStr string to save
      * @return Item
-     * @throws QueryException
+     * @throws Exception 
      */
     public Item save(final Str handler, final Str col, final Item saveStr)
-            throws QueryException {
+            throws Exception {
         final DB db = getDbHandler(handler);
         db.requestStart();
         try {
@@ -633,9 +633,9 @@ public class MongoDB extends Nosql {
      * run database command.
      * @param handler
      * @param command
-     * @throws QueryException
+     * @throws Exception 
      */
-    public Item runCommand(final Str handler, final Str command)throws QueryException {
+    public Item runCommand(final Str handler, final Str command)throws Exception {
         final DB db = getDbHandler(handler);
         db.requestStart();
         try {
