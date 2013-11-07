@@ -10,17 +10,21 @@ import java.util.concurrent.TimeUnit;
 
 import net.spy.memcached.internal.OperationFuture;
 
+import org.basex.query.QueryContext;
 import org.basex.query.QueryException;
-import org.basex.query.QueryModule;
+import org.basex.query.func.FNFt;
 import org.basex.query.func.FNJson;
+import org.basex.query.func.FuncOptions;
 import org.basex.query.func.Function;
+import org.basex.query.iter.Iter;
 import org.basex.query.value.Value;
 import org.basex.query.value.item.Item;
+import org.basex.query.value.item.QNm;
 import org.basex.query.value.item.Str;
 import org.basex.query.value.map.Map;
 import org.basex.query.value.type.SeqType;
-
 import com.couchbase.client.CouchbaseClient;
+import com.couchbase.client.CouchbaseConnectionFactory;
 import com.couchbase.client.protocol.views.DesignDocument;
 import com.couchbase.client.protocol.views.Query;
 import com.couchbase.client.protocol.views.Stale;
@@ -35,17 +39,28 @@ import com.couchbase.client.protocol.views.ViewResponse;
  * @author BaseX Team 2005-13, BSD License
  * @author Prakash Thapa
  */
-public class Couchbase extends QueryModule {
+public class Couchbase extends Nosql {
     /** URL of this module. */
-    //private static final String COUCHBASE_URL = "http://basex.org/modules/couchbase";
+    private static final String COUCHBASE_URL = "http://basex.org/modules/couchbase";
     /** QName of Couchbase options. */
-//    private static final QNm Q_COUCHBASE = QNm.get("couchbase", "options",
-//            COUCHBASE_URL);
+    private static final QNm Q_COUCHBASE = QNm.get("couchbase", "options",
+            COUCHBASE_URL);
     /** Couchbase instances. */
     private HashMap<String, CouchbaseClient> couchbaseclients =
             new HashMap<String, CouchbaseClient>();
+    /** Couchbase options. */
+    private HashMap<String, NosqlOptions> couchopts = new HashMap
+            <String, NosqlOptions>();
     /** nodes array. */
     //private ArrayList<URI> nodes = new ArrayList<URI>();
+    public Couchbase() {
+        super(Q_COUCHBASE);
+    }
+    public Iter search(final QueryContext ctx) throws QueryException {
+        final NosqlOptions opts = new NosqlOptions();
+        new FNFt(null, null, null).checkOptions(2, Q_COUCHBASE, opts, ctx);
+        return null;
+    }
     /**
      * Couchbase connection with url host bucket.
      * @param url
@@ -56,11 +71,33 @@ public class Couchbase extends QueryModule {
      */
     public Str connection(final Str url, final Str bucket, final Str password)
             throws Exception {
+        return connection(url, bucket, password, null);
+    }
+    /**
+     * Couchbase connection with url host bucket and with option.
+     * @param url
+     * @param bucket
+     * @param password
+     * @return Connection handler of Couchbase url
+     * @throws Exception
+     */
+    public Str connection(final Str url, final Str bucket, final Str password,
+            final Map options) throws Exception {
+        final NosqlOptions opts = new NosqlOptions();
+        if(options != null) {
+            new FuncOptions(Q_COUCHBASE, null).parse(options, opts);
+        }
         try {
-            String handler = "Client" + couchbaseclients.size();
+            String handler = "cbClient" + couchbaseclients.size();
             List<URI> hosts = Arrays.asList(new URI(url.toJava()));
-            CouchbaseClient client = new CouchbaseClient(hosts,
-            bucket.toJava(), password.toJava());
+//            CouchbaseClient client = new CouchbaseClient(hosts,
+//                    bucket.toJava(), password.toJava());
+            CouchbaseConnectionFactory cf = new CouchbaseConnectionFactory(hosts,
+                    bucket.toJava(), password.toJava());
+            CouchbaseClient client    =   new CouchbaseClient(cf);
+            if(options != null) {
+                couchopts.put(handler, opts);
+            }
             couchbaseclients.put(handler, client);
             return Str.get(handler);
         } catch (Exception ex) {
@@ -85,17 +122,17 @@ public class Couchbase extends QueryModule {
         }
     }
     /**
-     * Check if the string is json format or not. if not throw exception
-     * @param doc
-     * @throws QueryException
+     * get Couchbase option from particular db handler.
+     * @param handler
+     * @return MongoOptions
      */
-    private void checkJson(final Str doc) throws QueryException {
-        try {
-            new FNJson(null, null, Function._JSON_PARSE,
-                    doc).item(queryContext, null);
-        } catch (Exception e) {
-            throw new QueryException("document is not in json format");
-        }
+    @SuppressWarnings("unused")
+    private NosqlOptions getCouchbaseOption(final Str handler) {
+        NosqlOptions opt = couchopts.get(handler.toJava());
+        if(opt != null)
+            return opt;
+        else
+            return null;
     }
     /**
      * add new document.
@@ -104,7 +141,7 @@ public class Couchbase extends QueryModule {
      * @param value
      * @throws QueryException
      */
-    public Item add(final Str handler, final Str key, final Str doc)
+    public Item add(final Str handler, final Item key, final Item doc)
             throws QueryException {
         return put(handler, key, doc, "add");
     }
@@ -116,7 +153,7 @@ public class Couchbase extends QueryModule {
      * @return
      * @throws QueryException
      */
-    public Item set(final Str handler, final Str key,  final Str doc)
+    public Item set(final Str handler, final Item key,  final Item doc)
             throws QueryException {
         return put(handler, key, doc, "set");
     }
@@ -128,21 +165,42 @@ public class Couchbase extends QueryModule {
      * @return Item
      * @throws QueryException
      */
-    public Item replace(final Str handler, final Str key, final Str doc)
+    public Item replace(final Str handler, final Item key, final Item doc)
             throws QueryException {
        return put(handler, key, doc, "replace");
     }
     /**
-     * Append documnt with key. 
+     * Append document with key.
      * @param handler
      * @param key
      * @param doc
      * @return Item
      * @throws QueryException
      */
-    public Item append(final Str handler, final Str key, final Str doc)
+    public Item append(final Str handler, final Item key, final Item doc)
             throws QueryException {
-       return put(handler, key, doc, null);
+        CouchbaseClient client = getClient(handler);
+        OperationFuture<Boolean> result = null;
+        Str existing = (Str) get(handler, key);
+        final StringBuilder s = new StringBuilder();
+        s.append('[');
+        s.append(existing.toJava());
+        s.append(',');
+        s.append(itemToString(doc));
+        s.append(']');
+        System.out.println(s.toString());
+        try {
+            result = client.replace(
+                    itemToString(key), s);
+            String msg = result.getStatus().getMessage();
+            if(result.get().booleanValue()) {
+                return Str.get(msg);
+            } else {
+                throw new QueryException("operation fail " + msg);
+            }
+        } catch (Exception ex) {
+            throw new QueryException(ex);
+        }
     }
     /**
      * document addition.
@@ -153,7 +211,7 @@ public class Couchbase extends QueryModule {
      * @return Item
      * @throws QueryException
      */
-    public Item put(final Str handler, final Str key, final Str doc,
+    public Item put(final Str handler, final Item key, final Item doc,
             final String type) throws QueryException {
         CouchbaseClient client = getClient(handler);
         OperationFuture<Boolean> result = null;
@@ -161,21 +219,22 @@ public class Couchbase extends QueryModule {
         try {
             if(type != null) {
                 if(type.equals("add")) {
-                   client.add(
-                            key.toJava(), doc.toJava());
+                 result = client.add(
+                           itemToString(key), itemToString(doc));
                 } else if(type.equals("replace")) {
-                   client.replace(
-                            key.toJava(), doc.toJava());
+                    result = client.replace(
+                           itemToString(key), itemToString(doc));
                 } else if(type.equals("set")) {
                    result = client.set(
-                            key.toJava(), doc.toJava());
+                           itemToString(key), itemToString(doc));
                 } else {
                    result = client.append(
-                            key.toJava(), doc.toJava());
+                           itemToString(key), itemToString(doc));
                 }
             } else {
-                result = client.append(
-                        key.toJava(), doc.toJava());
+//                result = client.append(
+//                        itemToString(key), itemToString(doc));
+                return append(handler, key, doc);
             }
             String msg = result.getStatus().getMessage();
             if(result.get().booleanValue()) {
@@ -194,10 +253,10 @@ public class Couchbase extends QueryModule {
      * @return Item
      * @throws QueryException
      */
-    public Item get(final Str handler, final Str key) throws QueryException {
+    public Item get(final Str handler, final Item key) throws QueryException {
         CouchbaseClient client = getClient(handler);
         try {
-            Object result =  client.get(key.toJava());
+            Object result =  client.get(itemToString(key));
             if(result != null) {
                  Str json = Str.get((String) result);
                 try {
@@ -249,7 +308,6 @@ public class Couchbase extends QueryModule {
         }
     }
     public Item getbulk(final Str handler, final Item options) throws QueryException {
-         CouchbaseClient client = getClient(handler);
          try {
              if(options.size() < 1) {
                  throw new QueryException("key set is empty");
@@ -262,8 +320,8 @@ public class Couchbase extends QueryModule {
              }
 //             java.util.Map<String, Object> s = client.getBulk(keys);
 //             Object s1 = client.getBulk(keys);
-//             return new FNJson(null, Function._JSON_PARSE, Str.get(s2)).
-//                     item(context, null);
+//             return new FNJson(staticContext, null, Function._JSON_PARSE, Str.get(s2)).
+//                     item(queryContext, null);
          } catch (Exception ex) {
             throw new QueryException(ex);
         }
@@ -340,18 +398,22 @@ public class Couchbase extends QueryModule {
                 viewDesign = new ViewDesign(viewName.toJava(), map.toJava());
             }
             designDoc.getViews().add(viewDesign);
-            client.createDesignDoc(designDoc);
+           Boolean success = client.createDesignDoc(designDoc);
+           if(success) {
+               return Str.get("ok");
+           } else {
+               throw new QueryException("There is something wrong");
+           }
         } catch (Exception e) {
             throw new QueryException(e);
         }
-        return null;
     }
     /**
-     * 
+     * Get data from view without any option.
      * @param handler
      * @param doc
      * @param viewName
-     * @return
+     * @return item
      * @throws QueryException
      */
     public Item getview(final Str handler, final Str doc, final Str viewName)
@@ -368,12 +430,12 @@ public class Couchbase extends QueryModule {
      * @throws QueryException
      */
     public Item getview(final Str handler, final Str doc, final Str viewName,
-            final Str mode)
+            final Map mode)
             throws QueryException {
         return getview(handler, doc, viewName, mode, null);
     }
     /**
-     * 
+     * view with mode Option.
      * @param handler
      * @param doc
      * @param viewName
@@ -383,7 +445,7 @@ public class Couchbase extends QueryModule {
      * @throws QueryException
      */
     public Item getview(final Str handler, final Str doc, final Str viewName,
-            final Str mode, final Str options) throws QueryException {
+            final Map options, final Str mode) throws QueryException {
         if(mode != null) {
             System.setProperty("viewmode", mode.toJava());
         }
@@ -395,11 +457,8 @@ public class Couchbase extends QueryModule {
             q.setStale(Stale.FALSE);
             ViewResponse response = client.query(view, q);
             java.util.Map<String, Object> map = response.getMap();
-//            for(ViewRow row: response) {
-//                System.out.println(row.getDocument());
-//            }
             Str json = mapToJson(map);
-            return new FNJson(null, null, Function._JSON_PARSE, json).
+            return new FNJson(staticContext, null, Function._JSON_PARSE, json).
                     item(queryContext, null);
         } catch (Exception e) {
             throw new QueryException(e);
@@ -452,5 +511,8 @@ public class Couchbase extends QueryModule {
         } else {
             client.shutdown();
         }
+    }
+    public Item test(final Item qu) throws QueryException {
+        return qu;
     }
 }

@@ -5,7 +5,6 @@ import java.util.Locale;
 import org.basex.build.JsonOptions;
 import org.basex.util.options.EnumOption;
 import org.basex.util.options.NumberOption;
-import org.basex.util.options.OptionsOption;
 import org.basex.util.options.StringOption;
 /**
  * Options for MongoDB.
@@ -13,21 +12,19 @@ import org.basex.util.options.StringOption;
  * @author BaseX Team 2005-13, BSD License
  * @author Prakash Thapa
  */
-public class MongoOptions extends JsonOptions {
+public class NosqlOptions extends JsonOptions {
+    /** MongoDB host. */
+    public static final StringOption URL = new StringOption("url");
     /** MongoDB host. */
     public static final StringOption HOST = new StringOption("host");
     /** MongoDB port option. */
     public static final NumberOption PORT = new NumberOption("port");
     public static final StringOption USERNAME = new StringOption("user");
     public static final StringOption PASSWORD = new StringOption("password");
-    public static final OptionsOption<MongoOptions> TYPEN =
-        new OptionsOption<MongoOptions>("type", new MongoOptions());
-    public static final EnumOption<MongoFormat> TYPE =
-            new EnumOption<MongoFormat>("type", MongoFormat.XML);
-    public static final OptionsOption<JsonOptions> JSON =
-            new OptionsOption<JsonOptions>("json", new JsonOptions());
+    public static final EnumOption<NosqlFormat> TYPE =
+            new EnumOption<NosqlFormat>("type", NosqlFormat.XML);
     /** return result type */
-    public enum MongoFormat {
+    public enum NosqlFormat {
       /** json. */ JSON,
       /** xml. */ XML;
 
