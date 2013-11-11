@@ -1,12 +1,10 @@
 package org.basex.modules;
 
 import org.basex.build.JsonOptions;
-import org.basex.build.JsonOptions.JsonFormat;
 import org.basex.build.JsonParserOptions;
 import org.basex.io.parse.json.JsonConverter;
 import org.basex.modules.NosqlOptions.NosqlFormat;
 import org.basex.query.QueryException;
-import org.basex.query.QueryIOException;
 import org.basex.query.QueryModule;
 import org.basex.query.func.FNJson;
 import org.basex.query.func.FuncOptions;

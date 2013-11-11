@@ -214,7 +214,7 @@ public class MongoDB extends Nosql {
      * @return Item of Xml
      * @throws QueryException
      */
-    private Item objectToXml(final Str handler, final DBObject object)
+    private Item objectToItem(final Str handler, final DBObject object)
             throws QueryException {
         if(object != null) {
             try {
@@ -237,7 +237,7 @@ public class MongoDB extends Nosql {
     private DBObject getDbObjectFromStr(final Item item) throws QueryException {
         final String string = itemToString(item);
         try {
-          return  (DBObject) JSON.parse(itemToString(item));
+          return  (DBObject) JSON.parse(string);
     } catch (JSONParseException e) {
       throw new QueryException("Invalid JSON syntax: " + string);
         }
@@ -253,7 +253,7 @@ public class MongoDB extends Nosql {
       Set<String> col = db.getCollectionNames();
       BasicDBObject collection = new BasicDBObject("collections", col);
       try {
-        return objectToXml(handler, (DBObject) collection);
+        return objectToItem(handler, (DBObject) collection);
       } catch (JSONParseException e) {
           throw new QueryException("Invalid JSON syntax: " + col);
          }
@@ -345,8 +345,9 @@ public class MongoDB extends Nosql {
                         sort.append("name", "-1");
                         cursor.sort((DBObject) sort);
                     } else if(k.equals("explain")) {
-                        cursor.explain();
-                        System.out.println("explain" + v);
+                      DBObject result = cursor.explain();
+                        //System.out.println("explain" + v);
+                       return objectToItem(handler, result);
                     }
                   }
 
@@ -402,7 +403,7 @@ public class MongoDB extends Nosql {
                     getDbObjectFromStr(query) : null;
             final DBCollection coll = db.getCollection(itemToString(col));
             final DBObject cursor = coll.findOne(q, p);
-            return  objectToXml(handler, cursor);
+            return  objectToItem(handler, cursor);
         } catch (MongoException e) {
             throw new QueryException(e.getMessage());
         } finally {
@@ -415,7 +416,7 @@ public class MongoDB extends Nosql {
      * @param col Collection name
      * @param insertString string to insert in json formart.
      * @return
-     * @throws Exception 
+     * @throws Exception
      */
     public Item insert(final Str handler, final Str col, final Str insertString)
             throws Exception {
@@ -437,7 +438,7 @@ public class MongoDB extends Nosql {
      * @param col
      * @param insertString
      * @return Item
-     * @throws Exception 
+     * @throws Exception
      */
     public Item update(final Str handler, final Item col, final Item query,
             final Str updatestring) throws Exception {
@@ -462,7 +463,7 @@ public class MongoDB extends Nosql {
      * @param upsert true/false for mongodb upsert
      * @param multi true/false for mongodb multi
      * @return Item
-     * @throws Exception 
+     * @throws Exception
      */
     public Item update(final Str handler, final Item col, final Item query,
             final Str updatestring, final boolean upsert, final boolean multi)
@@ -487,7 +488,7 @@ public class MongoDB extends Nosql {
      * @param col collection name
      * @param saveStr string to save
      * @return Item
-     * @throws Exception 
+     * @throws Exception
      */
     public Item save(final Str handler, final Str col, final Item saveStr)
             throws Exception {
@@ -545,7 +546,7 @@ public class MongoDB extends Nosql {
 //                   Str.get(JSON.serialize(agg))).item(context, null);
            //Str.get(JSON.serialize(agg));
            for(DBObject dbObj: agg.results()) {
-              return objectToXml(handler, dbObj);
+              return objectToItem(handler, dbObj);
             }
         } catch (MongoException e) {
             throw new QueryException(e.getMessage());
@@ -570,7 +571,7 @@ public class MongoDB extends Nosql {
             AggregationOutput agg =  db.getCollection(col.toJava()).aggregate(
                     getDbObjectFromStr(first), getDbObjectFromStr(more));
             for(DBObject dbObj: agg.results()) {
-                return objectToXml(handler, dbObj);
+                return objectToItem(handler, dbObj);
               }
         } catch (MongoException e) {
             throw new QueryException(e.getMessage());
@@ -633,7 +634,7 @@ public class MongoDB extends Nosql {
      * run database command.
      * @param handler
      * @param command
-     * @throws Exception 
+     * @throws Exception
      */
     public Item runCommand(final Str handler, final Str command)throws Exception {
         final DB db = getDbHandler(handler);
@@ -641,6 +642,48 @@ public class MongoDB extends Nosql {
         try {
            CommandResult result = db.command(command.toJava());
            return returnResult(handler, Str.get(result.toString()));
+       } catch (MongoException e) {
+           throw new QueryException(db.getLastError().getString("err"));
+        } finally {
+           db.requestDone();
+        }
+    }
+    /**
+     * Create Index in specified field.
+     * @param handler
+     * @param col name of collection
+     * @param indexStr string to create index
+     * @throws Exception
+     */
+    public void createIndex(final Str handler, final Str col,
+            final Item indexStr)throws QueryException {
+        final DB db = getDbHandler(handler);
+        db.requestStart();
+        try {
+             db.getCollection(itemToString(col)).createIndex(
+                    getDbObjectFromStr(indexStr));
+           //return returnResult(handler, Str.get(result.toString()));
+       } catch (MongoException e) {
+           throw new QueryException(db.getLastError().getString("err"));
+        } finally {
+           db.requestDone();
+        }
+    }
+    /**
+     * drop Index in specified field.
+     * @param handler
+     * @param col name of collection
+     * @param indexStr string to create index
+     * @throws Exception
+     */
+    public void dropIndex(final Str handler, final Str col,
+            final Item indexStr)throws QueryException {
+        final DB db = getDbHandler(handler);
+        db.requestStart();
+        try {
+             db.getCollection(itemToString(col)).createIndex(
+                    getDbObjectFromStr(indexStr));
+           //return returnResult(handler, Str.get(result.toString()));
        } catch (MongoException e) {
            throw new QueryException(db.getLastError().getString("err"));
         } finally {
