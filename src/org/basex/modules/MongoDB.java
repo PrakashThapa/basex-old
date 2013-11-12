@@ -174,6 +174,14 @@ public class MongoDB extends Nosql {
         else
             return null;
     }
+    /**
+     * This will check the assigned options and then return the final result
+     * process by parent class.
+     * @param handler
+     * @param json
+     * @return
+     * @throws Exception
+     */
     private Item returnResult(final Str handler, final Str json)
             throws Exception {
         NosqlOptions opt =   getMongoOption(handler);

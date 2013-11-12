@@ -126,13 +126,33 @@ public class Couchbase extends Nosql {
      * @param handler
      * @return MongoOptions
      */
-    @SuppressWarnings("unused")
     private NosqlOptions getCouchbaseOption(final Str handler) {
         NosqlOptions opt = couchopts.get(handler.toJava());
         if(opt != null)
             return opt;
         else
             return null;
+    }
+    /**
+     * This will check the assigned options and then return the final result
+     * process by parent class.
+     * @param handler
+     * @param json
+     * @return
+     * @throws Exception
+     */
+    private Item returnResult(final Str handler, final Str json)
+            throws Exception {
+        NosqlOptions opt =   getCouchbaseOption(handler);
+        if(json != null) {
+                if(opt != null) {
+                    return finalResult(json, opt);
+                } else {
+                    return finalResult(json, null);
+                }
+        } else {
+          return  null;
+        }
     }
     /**
      * add new document.
@@ -215,18 +235,17 @@ public class Couchbase extends Nosql {
             final String type) throws QueryException {
         CouchbaseClient client = getClient(handler);
         OperationFuture<Boolean> result = null;
-       checkJson(doc);
         try {
             if(type != null) {
                 if(type.equals("add")) {
                  result = client.add(
-                           itemToString(key), itemToString(doc));
+                           itemToString(key), itemToJsonString(doc));
                 } else if(type.equals("replace")) {
                     result = client.replace(
-                           itemToString(key), itemToString(doc));
+                           itemToString(key), itemToJsonString(doc));
                 } else if(type.equals("set")) {
                    result = client.set(
-                           itemToString(key), itemToString(doc));
+                           itemToString(key), itemToJsonString(doc));
                 } else {
                    result = client.append(
                            itemToString(key), itemToString(doc));
@@ -259,12 +278,7 @@ public class Couchbase extends Nosql {
             Object result =  client.get(itemToString(key));
             if(result != null) {
                  Str json = Str.get((String) result);
-                try {
-                    return new FNJson(null, null, Function._JSON_PARSE,
-                            json).item(queryContext, null);
-                } catch (Exception e) {
-                    throw new QueryException("The result is not in json Format");
-                }
+                 return returnResult(handler, json);
             } else
               throw new QueryException("Element is empty");
         } catch (Exception ex) {
