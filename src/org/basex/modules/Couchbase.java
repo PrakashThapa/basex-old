@@ -199,7 +199,9 @@ public class Couchbase extends Nosql {
      */
     public Item append(final Str handler, final Item key, final Item doc)
             throws QueryException {
-        CouchbaseClient client = getClient(handler);
+        //CouchbaseClient client = getClient(handler);
+        return put(handler, key, doc, null);
+        /*
         OperationFuture<Boolean> result = null;
         Str existing = (Str) get(handler, key);
         final StringBuilder s = new StringBuilder();
@@ -221,6 +223,7 @@ public class Couchbase extends Nosql {
         } catch (Exception ex) {
             throw new QueryException(ex);
         }
+        */
     }
     /**
      * document addition.
@@ -251,9 +254,9 @@ public class Couchbase extends Nosql {
                            itemToString(key), itemToString(doc));
                 }
             } else {
-//                result = client.append(
-//                        itemToString(key), itemToString(doc));
-                return append(handler, key, doc);
+                result = client.append(
+                        itemToString(key), itemToString(doc));
+                //return append(handler, key, doc);
             }
             String msg = result.getStatus().getMessage();
             if(result.get().booleanValue()) {

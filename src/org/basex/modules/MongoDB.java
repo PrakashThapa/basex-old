@@ -15,7 +15,6 @@ import org.basex.query.value.item.QNm;
 import org.basex.query.value.item.Str;
 import org.basex.query.value.map.Map;
 import org.basex.query.value.type.SeqType;
-
 import com.mongodb.AggregationOutput;
 import com.mongodb.BasicDBObject;
 import com.mongodb.CommandResult;
@@ -23,6 +22,8 @@ import com.mongodb.DB;
 import com.mongodb.DBCollection;
 import com.mongodb.DBCursor;
 import com.mongodb.DBObject;
+import com.mongodb.MapReduceCommand;
+import com.mongodb.MapReduceOutput;
 import com.mongodb.MongoClient;
 import com.mongodb.MongoClientURI;
 import com.mongodb.MongoException;
@@ -206,8 +207,6 @@ public class MongoDB extends Nosql {
         if(result != null) {
             try {
                 final Str json = Str.get(JSON.serialize(result));
-//                return new FNJson(null, null, Function._JSON_PARSE, json).
-//                        item(queryContext, null);
                 return returnResult(handler, json);
             } catch (final Exception ex) {
                 throw new QueryException(ex);
@@ -298,8 +297,8 @@ public class MongoDB extends Nosql {
      * @throws QueryException
      */
     public Item find(final Str handler, final Str col, final Str query,
-             final Map options) throws QueryException {
-         return find(handler, col, query, options, null);
+             final Item opt) throws QueryException {
+         return find(handler, col, query, opt, null);
        }
     /**
      * Mongodb Find method real implementation.
@@ -311,54 +310,64 @@ public class MongoDB extends Nosql {
      * @throws QueryException
      */
     public Item find(final Str handler, final Item col, final Item query,
-            final Map options, final Item projection) throws QueryException {
+            final Item opt, final Item projection) throws QueryException {
 
           final DB db = getDbHandler(handler);
           db.requestStart();
               try {
                 final DBObject p = projection != null ?
-                    getDbObjectFromStr(projection) : null;
+                    getDbObjectFromStr(projection) :
+                        (opt != null && (!(opt instanceof Map))) ?
+                                getDbObjectFromStr(opt) : null;
                 final DBObject q = query != null ?
                         getDbObjectFromStr(query) : null;
                 final DBCollection coll = db.getCollection(itemToString(col));
                 final DBCursor cursor = coll.find(q, p);
-                if(options != null) {
+                if(opt != null) {
                   //final TokenMap map = new FuncParams(Q_MONGODB, null).parse(options);
-                  Value keys = options.keys();
-                  for(final Item key : keys) {
-                    if(!(key instanceof Str))
-                        throw new QueryException("String expected, ...");
-                    final String k = ((Str) key).toJava();
-                    final Value v = options.get(key, null);
-                   if(v instanceof Str || v.type().instanceOf(SeqType.ITR)) {
+                 //4th parameter can be map or with projection
+                    if(opt instanceof Map) {
+                    Map options = (Map) opt;
+                     Value keys = options.keys();
+                     for(final Item key : keys) {
+                       if(!(key instanceof Str))
+                           throw new QueryException("String expected, ...");
+                       final String k = ((Str) key).toJava();
+                       final Value v = options.get(key, null);
+                      if(v instanceof Str || v.type().instanceOf(SeqType.ITR)) {
+                          if(k.equals("limit")) {
+                              System.out.println(v.type());
+                              if(v.type().instanceOf(SeqType.ITR_OM)) {
+                                  long l = ((Item) v).itr(null);
+                                  cursor.limit((int) l);
+                              } else {
+                                  throw new QueryException("Invalid value...");
+                              }
+                          }
+                      } else if(v instanceof Map) {
+                      } else {
+                          throw new QueryException("Invalid value 2...");
+                      }
                        if(k.equals("limit")) {
-                           System.out.println(v.type());
-                           if(v.type().instanceOf(SeqType.ITR_OM)) {
-                               long l = ((Item) v).itr(null);
-                               cursor.limit((int) l);
-                           } else {
-                               throw new QueryException("Invalid value...");
-                           }
+                         //cursor.limit(Token.toInt(v));
+                       } else if(k.equals("skip")) {
+                           //cursor.skip(Token.toInt(v));
+                       } else if(k.equals("sort")) {
+                           BasicDBObject sort = new BasicDBObject(k, v);
+                           sort.append("name", "-1");
+                           cursor.sort((DBObject) sort);
+                       } else if(k.equals("count")) {
+                           int count = cursor.count();
+                           BasicDBObject res = new BasicDBObject();
+                           res.append("count", count);
+                           return objectToItem(handler, res);
+                       } else if(k.equals("explain")) {
+                         DBObject result = cursor.explain();
+                           //System.out.println("explain" + v);
+                          return objectToItem(handler, result);
                        }
-                   } else if(v instanceof Map) {
-                   } else {
-                       throw new QueryException("Invalid value 2...");
-                   }
-                    if(k.equals("limit")) {
-                      //cursor.limit(Token.toInt(v));
-                    } else if(k.equals("skip")) {
-                        //cursor.skip(Token.toInt(v));
-                    } else if(k.equals("sort")) {
-                        BasicDBObject sort = new BasicDBObject(k, v);
-                        sort.append("name", "-1");
-                        cursor.sort((DBObject) sort);
-                    } else if(k.equals("explain")) {
-                      DBObject result = cursor.explain();
-                        //System.out.println("explain" + v);
-                       return objectToItem(handler, result);
-                    }
-                  }
-
+                     }
+                 }
                 }
 
                 return resultToXml(handler, cursor);
@@ -535,6 +544,23 @@ public class MongoDB extends Nosql {
            db.requestDone();
         }
     }
+//    public Item aggregate(final Str handler, final Item col, final Item first)
+//            throws Exception {
+//       // return aggregate(handler, col, first);
+//        return null;
+//    }
+    /**
+     * Mongodb aggregate().
+     * @param handler database handler
+     * @param col collection name
+     * @param first aggregation compulsary
+     * @return Item
+     * @throws Exception
+     */
+    public Item aggregate(final Str handler, final Item col, final Item first)
+            throws Exception {
+        return aggregate(handler, col, first, null);
+    }
     /**
      * Mongodb aggregate().
      * @param handler database handler
@@ -543,50 +569,40 @@ public class MongoDB extends Nosql {
      * @return Item
      * @throws QueryException
      */
-    public Item aggregate(final Str handler, final Item col, final Item first)
-            throws QueryException {
+    public Item aggregate(final Str handler, final Item col, final Item first,
+            final Value  additionalOps) throws Exception {
         final DB db = getDbHandler(handler);
-        db.requestStart();
-        try {
-           AggregationOutput agg =  db.getCollection(itemToString(col)).aggregate(
-                    getDbObjectFromStr(first));
-//           return new FNJson(null, Function._JSON_PARSE,
-//                   Str.get(JSON.serialize(agg))).item(context, null);
-           //Str.get(JSON.serialize(agg));
-           for(DBObject dbObj: agg.results()) {
-              return objectToItem(handler, dbObj);
+        AggregationOutput agg;
+        DBObject[] s = null;
+        if(additionalOps != null) {
+            int length = (int) additionalOps.size();
+            if(length > 0) {
+                s = new BasicDBObject[length];
+                int i = 0;
+                for (Item x: additionalOps) {
+                     s[i++] = getDbObjectFromStr(x);
+                }
+            } else {
+                s   =   null;
             }
-        } catch (MongoException e) {
-            throw new QueryException(e.getMessage());
-        } finally {
-           db.requestDone();
         }
-        return null;
-    }
-    /**
-     * Mongodb aggregate().
-     * @param handler database handler
-     * @param col collection name
-     * @param first first aggregation compulsary
-     * @param more more aggregation options
-     * @throws QueryException
-     */
-    public Item aggregate(final Str handler, final Str col, final Str first,
-            final Str more) throws QueryException {
-        final DB db = getDbHandler(handler);
         db.requestStart();
         try {
-            AggregationOutput agg =  db.getCollection(col.toJava()).aggregate(
-                    getDbObjectFromStr(first), getDbObjectFromStr(more));
-            for(DBObject dbObj: agg.results()) {
-                return objectToItem(handler, dbObj);
-              }
+            if(additionalOps != null) {
+                agg =  db.getCollection(itemToString(col)).
+                        aggregate(getDbObjectFromStr(first), s);
+            } else {
+                agg =  db.getCollection(itemToString(col)).
+                        aggregate(getDbObjectFromStr(first));
+            }
+           final Iterable<DBObject> d = agg.results();
+          return returnResult(handler, Str.get(JSON.serialize(d)));
         } catch (MongoException e) {
             throw new QueryException(e.getMessage());
         } finally {
            db.requestDone();
         }
-        return  null;
+
     }
     /**
      * count numbers of documents in a collection.
@@ -719,5 +735,21 @@ public class MongoDB extends Nosql {
         if(client == null)
             throw new QueryException("Unknown MongoDB handler: '" + ch + "'");
         client.close();
+    }
+    public Item mapreduce(final Str handler, final Str col, final Str map,
+            final Str reduce) throws Exception {
+        return mapreduce(handler, col, map, reduce, null);
+    }
+    public Item mapreduce(final Str handler, final Str col, final Str map,
+            final Str reduce, final Item query) throws Exception {
+        final DB db = getDbHandler(handler);
+        final DBObject q = query != null ?
+                getDbObjectFromStr(query) : null;
+        final DBCollection collection = db.getCollection(itemToString(col));
+       MapReduceCommand cmd = new MapReduceCommand(collection,
+               map.toJava(), reduce.toJava(), null,
+               MapReduceCommand.OutputType.INLINE, q);
+       MapReduceOutput out = collection.mapReduce(cmd);
+       return returnResult(handler, Str.get(JSON.serialize(out.results())));
     }
 }

@@ -3,6 +3,8 @@ package org.basex.modules;
 import org.basex.build.JsonOptions;
 import org.basex.build.JsonParserOptions;
 import org.basex.io.parse.json.JsonConverter;
+import org.basex.io.serial.SerialMethod;
+import org.basex.io.serial.SerializerOptions;
 import org.basex.modules.NosqlOptions.NosqlFormat;
 import org.basex.query.QueryException;
 import org.basex.query.QueryModule;
@@ -43,6 +45,14 @@ class Nosql extends QueryModule {
         } else {
             throw new QueryException("Item is not in Str format");
         }
+    }
+    protected Item formatjson(final Str json,  final NosqlOptions jopts)
+            throws QueryException {
+        final SerializerOptions sopts = new SerializerOptions();
+        sopts.set(SerializerOptions.METHOD, SerialMethod.JSON);
+        Item x = new FNJson(staticContext, null, Function.SERIALIZE,
+                json).item(queryContext, null);
+        return x;
     }
     /**
      * return java String from Item.
@@ -103,14 +113,14 @@ class Nosql extends QueryModule {
                         //        Function._JSON_PARSE, json).
                         //        item(queryContext, null);
                     } else {
-                        return json;
+                        //return json;
                         //just change for formatting of josn
-//                        Item xXml = new FNJson(staticContext, null,
-//                                Function._JSON_PARSE, json).
-//                                item(queryContext, null);
-//                        return new FNJson(staticContext, null,
-//                                Function._JSON_SERIALIZE, xXml).
-//                                item(queryContext, null);
+                        Item xXml = new FNJson(staticContext, null,
+                                Function._JSON_PARSE, json).
+                                item(queryContext, null);
+                        return new FNJson(staticContext, null,
+                                Function._JSON_SERIALIZE, xXml).
+                                item(queryContext, null);
                     }
                 }
                 return new FNJson(staticContext, null, Function._JSON_PARSE, json).
