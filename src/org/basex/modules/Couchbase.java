@@ -13,9 +13,7 @@ import net.spy.memcached.internal.OperationFuture;
 import org.basex.query.QueryContext;
 import org.basex.query.QueryException;
 import org.basex.query.func.FNFt;
-import org.basex.query.func.FNJson;
 import org.basex.query.func.FuncOptions;
-import org.basex.query.func.Function;
 import org.basex.query.iter.Iter;
 import org.basex.query.value.Value;
 import org.basex.query.value.item.Item;
@@ -31,6 +29,7 @@ import com.couchbase.client.protocol.views.Stale;
 import com.couchbase.client.protocol.views.View;
 import com.couchbase.client.protocol.views.ViewDesign;
 import com.couchbase.client.protocol.views.ViewResponse;
+import com.couchbase.client.vbucket.ConfigurationException;
 
 
 /**
@@ -100,7 +99,9 @@ public class Couchbase extends Nosql {
             }
             couchbaseclients.put(handler, client);
             return Str.get(handler);
-        } catch (Exception ex) {
+        } catch (ConfigurationException e) {
+            throw new QueryException("Invalid Authentication parameters");
+        }catch (Exception ex) {
               throw new QueryException(ex);
           }
     }
@@ -398,7 +399,6 @@ public class Couchbase extends Nosql {
      * @return
      * @throws QueryException
      */
-    @SuppressWarnings("rawtypes")
     public Item createView(final Str handler, final Str doc, final Str viewName,
             final Str map, final Str reduce) throws QueryException {
         CouchbaseClient client = getClient(handler);
@@ -406,7 +406,7 @@ public class Couchbase extends Nosql {
             throw new QueryException("map function is empty");
         }
         try {
-            DesignDocument<?> designDoc = new DesignDocument(doc.toJava());
+            DesignDocument designDoc = new DesignDocument(doc.toJava());
             ViewDesign viewDesign;
             if(reduce != null) {
                viewDesign = new ViewDesign(viewName.toJava(),
@@ -435,21 +435,7 @@ public class Couchbase extends Nosql {
      */
     public Item getview(final Str handler, final Str doc, final Str viewName)
             throws QueryException {
-        return getview(handler, doc, viewName, null, null);
-    }
-    /**
-     * Get data from view.
-     * @param handler
-     * @param doc
-     * @param viewName
-     * @param mode is development or production
-     * @return
-     * @throws QueryException
-     */
-    public Item getview(final Str handler, final Str doc, final Str viewName,
-            final Map mode)
-            throws QueryException {
-        return getview(handler, doc, viewName, mode, null);
+        return getview(handler, doc, viewName, null);
     }
     /**
      * view with mode Option.
@@ -462,21 +448,59 @@ public class Couchbase extends Nosql {
      * @throws QueryException
      */
     public Item getview(final Str handler, final Str doc, final Str viewName,
-            final Map options, final Str mode) throws QueryException {
-        if(mode != null) {
-            System.setProperty("viewmode", mode.toJava());
+            final Map options) throws QueryException {
+        final CouchbaseClient client = getClient(handler);
+        Query q = new Query();
+        q.setIncludeDocs(true);
+        if(options != null) {
+            Value keys = options.keys();
+            for(final Item key : keys) {
+                if(!(key instanceof Str))
+                    throw new QueryException("String expected, ...");
+                final String k = ((Str) key).toJava();
+                final Value v = options.get(key, null);
+                if(k.equals("viewmode")) {
+                    System.setProperty("viewmode", v.toJava().toString());
+                } else if(k.equals("limit")) {
+                    if(v.type().instanceOf(SeqType.ITR_OM)) {
+                        long l = ((Item) v).itr(null);
+                        q.setLimit((int) l);
+                    } else {
+                        throw new QueryException("Invalid value number expected...");
+                    }
+                } else if(k.equals("stale")) {
+                    String s = ((Item) v).toString();
+                    if(s.equals("ok"))
+                        q.setStale(Stale.OK);
+                    else if(s.equals("false"))
+                        q.setStale(Stale.FALSE);
+                    else if(s.equals("update_after"))
+                        q.setStale(Stale.UPDATE_AFTER);
+                } else if(k.equals("key")) {
+                    String s = ((Item) v).toString();
+                    q.setKey(s);
+                } else if(k.equals("skip")) {
+                    if(v.type().instanceOf(SeqType.ITR_OM)) {
+                        long l = ((Item) v).itr(null);
+                        q.setSkip((int) l);
+                    } else {
+                        throw new QueryException("Invalid value number expected...");
+                    }
+                } else if(k.equals("range")) {
+                    if(v.iter().size() == 2) {
+                        q.setRange(v.iter().get(0).toString(), v.iter().
+                                get(1).toString());
+                    }
+                }
+            }
         }
-        CouchbaseClient client = getClient(handler);
+        //q.setStale(Stale.FALSE);
         try {
             View view = client.getView(doc.toJava(), viewName.toJava());
-            Query q = new Query();
-            q.setIncludeDocs(true).setLimit(10);
-            q.setStale(Stale.FALSE);
             ViewResponse response = client.query(view, q);
             java.util.Map<String, Object> map = response.getMap();
             Str json = mapToJson(map);
-            return new FNJson(staticContext, null, Function._JSON_PARSE, json).
-                    item(queryContext, null);
+            return returnResult(handler, json);
         } catch (Exception e) {
             throw new QueryException(e);
         }
@@ -486,7 +510,7 @@ public class Couchbase extends Nosql {
      * Convert java Map<String, Object> into json format String and then return
      * in Str.
      * @param map
-     * @return
+     * @return Str
      */
     private Str mapToJson(final java.util.Map<String, Object> map) {
         final StringBuilder json = new StringBuilder();

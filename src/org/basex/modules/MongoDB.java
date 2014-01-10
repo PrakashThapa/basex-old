@@ -23,6 +23,7 @@ import com.mongodb.DBCollection;
 import com.mongodb.DBCursor;
 import com.mongodb.DBObject;
 import com.mongodb.MapReduceCommand;
+import com.mongodb.MapReduceCommand.OutputType;
 import com.mongodb.MapReduceOutput;
 import com.mongodb.MongoClient;
 import com.mongodb.MongoClientURI;
@@ -315,19 +316,21 @@ public class MongoDB extends Nosql {
           final DB db = getDbHandler(handler);
           db.requestStart();
               try {
-                final DBObject p = projection != null ?
-                    getDbObjectFromStr(projection) :
-                        (opt != null && (!(opt instanceof Map))) ?
-                                getDbObjectFromStr(opt) : null;
+                  DBObject p = null;
+                  if(opt != null && opt instanceof Str) {
+                      p = getDbObjectFromStr(opt);
+                  } else if (projection != null && projection instanceof Str) {
+                      p = getDbObjectFromStr(projection);
+                  }
                 final DBObject q = query != null ?
                         getDbObjectFromStr(query) : null;
                 final DBCollection coll = db.getCollection(itemToString(col));
                 final DBCursor cursor = coll.find(q, p);
-                if(opt != null) {
-                  //final TokenMap map = new FuncParams(Q_MONGODB, null).parse(options);
-                 //4th parameter can be map or with projection
-                    if(opt instanceof Map) {
-                    Map options = (Map) opt;
+                Map options = null;
+                options = (opt != null && opt instanceof Map) ? (Map) opt :
+                    (projection != null && projection instanceof Map) ?
+                            (Map) projection : null;
+                if(options != null) {
                      Value keys = options.keys();
                      for(final Item key : keys) {
                        if(!(key instanceof Str))
@@ -336,7 +339,6 @@ public class MongoDB extends Nosql {
                        final Value v = options.get(key, null);
                       if(v instanceof Str || v.type().instanceOf(SeqType.ITR)) {
                           if(k.equals("limit")) {
-                              System.out.println(v.type());
                               if(v.type().instanceOf(SeqType.ITR_OM)) {
                                   long l = ((Item) v).itr(null);
                                   cursor.limit((int) l);
@@ -348,9 +350,7 @@ public class MongoDB extends Nosql {
                       } else {
                           throw new QueryException("Invalid value 2...");
                       }
-                       if(k.equals("limit")) {
-                         //cursor.limit(Token.toInt(v));
-                       } else if(k.equals("skip")) {
+                       if(k.equals("skip")) {
                            //cursor.skip(Token.toInt(v));
                        } else if(k.equals("sort")) {
                            BasicDBObject sort = new BasicDBObject(k, v);
@@ -363,13 +363,10 @@ public class MongoDB extends Nosql {
                            return objectToItem(handler, res);
                        } else if(k.equals("explain")) {
                          DBObject result = cursor.explain();
-                           //System.out.println("explain" + v);
                           return objectToItem(handler, result);
                        }
                      }
-                 }
                 }
-
                 return resultToXml(handler, cursor);
               } catch (MongoException e) {
                   throw new QueryException(e.getMessage());
@@ -574,7 +571,7 @@ public class MongoDB extends Nosql {
         final DB db = getDbHandler(handler);
         AggregationOutput agg;
         DBObject[] s = null;
-        if(additionalOps != null) {
+        if(additionalOps != null && (!additionalOps.isEmpty())) {
             int length = (int) additionalOps.size();
             if(length > 0) {
                 s = new BasicDBObject[length];
@@ -588,7 +585,7 @@ public class MongoDB extends Nosql {
         }
         db.requestStart();
         try {
-            if(additionalOps != null) {
+            if(additionalOps != null && (!additionalOps.isEmpty())) {
                 agg =  db.getCollection(itemToString(col)).
                         aggregate(getDbObjectFromStr(first), s);
             } else {
@@ -638,6 +635,29 @@ public class MongoDB extends Nosql {
         }
     }
     /**
+     * Copy collection from one Database insert to another database.
+     * @param handler
+     * @param source
+     * @param dest
+     * @throws QueryException
+     */
+    public void copy(final Str handler, final Item source, final Str handlerDest,
+            final Item dest) throws QueryException {
+        final DB db = getDbHandler(handler);
+        final DB dbDestionation = getDbHandler(handlerDest);
+        db.requestStart();
+        try {
+            List<DBObject> cursor = db.getCollection(itemToString(source)).
+                    find().toArray();
+            dbDestionation.getCollection(itemToString(dest)).drop();
+            dbDestionation.getCollection(itemToString(dest)).insert(cursor);
+       } catch (MongoException e) {
+           throw new QueryException(db.getLastError().getString("err"));
+        } finally {
+           db.requestDone();
+        }
+    }
+    /**
      * Drop collection from a database.
      * @param handler
      * @param col
@@ -679,12 +699,12 @@ public class MongoDB extends Nosql {
      * @param indexStr string to create index
      * @throws Exception
      */
-    public void createIndex(final Str handler, final Str col,
+    public void ensureIndex(final Str handler, final Str col,
             final Item indexStr)throws QueryException {
         final DB db = getDbHandler(handler);
         db.requestStart();
         try {
-             db.getCollection(itemToString(col)).createIndex(
+             db.getCollection(itemToString(col)).ensureIndex(
                     getDbObjectFromStr(indexStr));
            //return returnResult(handler, Str.get(result.toString()));
        } catch (MongoException e) {
@@ -736,20 +756,101 @@ public class MongoDB extends Nosql {
             throw new QueryException("Unknown MongoDB handler: '" + ch + "'");
         client.close();
     }
+    /**
+     * Mongodb Mapreduce function with 2 parameters.
+     * @param handler Database Handler.
+     * @param col Collection name
+     * @param map Map method
+     * @param reduce Reduce Method
+     * @return Items
+     * @throws Exception
+     */
     public Item mapreduce(final Str handler, final Str col, final Str map,
             final Str reduce) throws Exception {
-        return mapreduce(handler, col, map, reduce, null);
+        return mapreduce(handler, col, map, reduce, null, null, null);
     }
+    /**
+     * Mongodb Mapreduce function with 2 parameters.
+     * @param handler Database Handler.
+     * @param col Collection name
+     * @param map Map method
+     * @param reduce Reduce Method
+     * @return Items
+     * @throws Exception
+     */
     public Item mapreduce(final Str handler, final Str col, final Str map,
-            final Str reduce, final Item query) throws Exception {
+            final Str reduce, final Item finalalize) throws Exception {
+        return mapreduce(handler, col, map, reduce, finalalize, null, null);
+    }
+    /**
+     * Mongodb Mapreduce function with 2 parameters.
+     * @param handler Database Handler.
+     * @param col Collection name
+     * @param map Map method
+     * @param reduce Reduce Method
+     * @return Items
+     * @throws Exception
+     */
+    public Item mapreduce(final Str handler, final Str col, final Str map,
+            final Str reduce, final Item finalalize, final Item query) throws Exception {
+        return mapreduce(handler, col, map, reduce, finalalize, query, null);
+    }
+    /**
+     * Mongodb Mapreduce function with 3 parameters, Map, reduce and query Option.
+     * @param handler Database Handler.
+     * @param col Collection name
+     * @param map Map method
+     * @param reduce Reduce Method
+     * @param query Selection options.
+     * @return Items.
+     * @throws Exception
+     */
+    public Item mapreduce(final Str handler, final Str col, final Str map,
+            final Str reduce, final Item finalalize, final Item query,
+            final Map options) throws Exception {
         final DB db = getDbHandler(handler);
         final DBObject q = query != null ?
                 getDbObjectFromStr(query) : null;
         final DBCollection collection = db.getCollection(itemToString(col));
-       MapReduceCommand cmd = new MapReduceCommand(collection,
-               map.toJava(), reduce.toJava(), null,
-               MapReduceCommand.OutputType.INLINE, q);
-       MapReduceOutput out = collection.mapReduce(cmd);
-       return returnResult(handler, Str.get(JSON.serialize(out.results())));
+        String out = null;
+        String outType = null;
+        OutputType op = MapReduceCommand.OutputType.INLINE;
+        if(options != null) {
+            for(Item k : options.keys()) {
+                String key = (String) k.toJava();
+                if(key.equals("outputs")) {
+                    out = (String) options.get(k, null).toJava();
+                }
+                if(key.equals("outputype")) {
+                    outType = (String) options.get(k, null).toJava();
+                }
+            }
+            if(out != null) {
+                if(outType.toUpperCase().equals("REPLACE")) {
+                    op = MapReduceCommand.OutputType.REPLACE;
+                } else if(outType.toUpperCase().equals("MERGE")) {
+                    op = MapReduceCommand.OutputType.MERGE;
+                } else if(outType.toUpperCase().equals("REDUCE")) {
+                    op = MapReduceCommand.OutputType.REDUCE;
+                }
+            }
+        }
+        MapReduceCommand cmd = new MapReduceCommand(collection,
+               map.toJava(), reduce.toJava(), out, op, q);
+        if(finalalize != null) {
+            cmd.setFinalize((String) finalalize.toJava());
+        }
+       MapReduceOutput outcmd = collection.mapReduce(cmd);
+       return returnResult(handler, Str.get(JSON.serialize(outcmd.results())));
+    }
+    public Item mapreduce(final Str handler, final Map options) throws QueryException {
+        if(options == null) {
+            throw new QueryException("Map optoin is empty");
+        }
+        Value keys = options.keys();
+        for(Item k: keys) {
+            
+        }
+        return null;
     }
 }

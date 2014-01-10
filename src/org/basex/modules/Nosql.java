@@ -107,8 +107,10 @@ class Nosql extends QueryModule {
                     if(opt.get(NosqlOptions.TYPE) == NosqlFormat.XML) {
                         final JsonParserOptions opts = new JsonParserOptions();
                         opts.set(JsonOptions.FORMAT, opt.get(JsonOptions.FORMAT));
-                        return JsonConverter.convert(json.string(), opts);
-
+                        //return JsonConverter.convert(json.string(), opts);
+                        final JsonConverter conv = JsonConverter.get(opts);
+                        conv.convert(json.string(), null);
+                        return conv.finish();
                         //return new FNJson(staticContext, null,
                         //        Function._JSON_PARSE, json).
                         //        item(queryContext, null);
