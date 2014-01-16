@@ -843,14 +843,55 @@ public class MongoDB extends Nosql {
        MapReduceOutput outcmd = collection.mapReduce(cmd);
        return returnResult(handler, Str.get(JSON.serialize(outcmd.results())));
     }
-    public Item mapreduce(final Str handler, final Map options) throws QueryException {
+    public Item mapreduce(final Str handler, final Str col, final Map options)
+            throws Exception {
         if(options == null) {
-            throw new QueryException("Map optoin is empty");
+            throw new QueryException("Map optoins are empty");
         }
-        Value keys = options.keys();
-        for(Item k: keys) {
-            
+        final DB db = getDbHandler(handler);
+        final DBCollection collection = db.getCollection(itemToString(col));
+        String out = null;
+        String outType = null;
+        String map = null;
+        String reduce = null;
+        DBObject query = null;
+        String finalalize = null;
+        OutputType op = MapReduceCommand.OutputType.INLINE;
+        for(Item k : options.keys()) {
+            String key = (String) k.toJava();
+            String value = (String) options.get(k, null).toJava();
+            if(key.toLowerCase().equals("map")) {
+               map = (String) value;
+            } else if(key.toLowerCase().equals("reduce")) {
+                reduce = value;
+            } else  if(key.toLowerCase().equals("outputs")) {
+                out = value;
+            } else if(key.toLowerCase().equals("outputype")) {
+                outType = value;
+            } else if(key.toLowerCase().equals("query")) {
+                query = getDbObjectFromStr(Str.get(value));
+            } else if(key.toLowerCase().equals("finalalize")) {
+                finalalize = value;
+            }
         }
-        return null;
+        if(out != null) {
+            if(outType.toUpperCase().equals("REPLACE")) {
+                op = MapReduceCommand.OutputType.REPLACE;
+            } else if(outType.toUpperCase().equals("MERGE")) {
+                op = MapReduceCommand.OutputType.MERGE;
+            } else if(outType.toUpperCase().equals("REDUCE")) {
+                op = MapReduceCommand.OutputType.REDUCE;
+            }
+        }
+        if(map == null) {
+            throw new QueryException("Map function cannot be empty");
+        }
+        MapReduceCommand cmd = new MapReduceCommand(collection,
+               map, reduce, out, op, query);
+        if(finalalize != null) {
+            cmd.setFinalize(finalalize);
+        }
+       MapReduceOutput outcmd = collection.mapReduce(cmd);
+       return returnResult(handler, Str.get(JSON.serialize(outcmd.results())));
     }
 }

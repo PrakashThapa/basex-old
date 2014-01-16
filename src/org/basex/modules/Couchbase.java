@@ -5,7 +5,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Map.Entry;
 import java.util.concurrent.TimeUnit;
 
 import net.spy.memcached.internal.OperationFuture;
@@ -29,6 +28,7 @@ import com.couchbase.client.protocol.views.Stale;
 import com.couchbase.client.protocol.views.View;
 import com.couchbase.client.protocol.views.ViewDesign;
 import com.couchbase.client.protocol.views.ViewResponse;
+import com.couchbase.client.protocol.views.ViewRow;
 import com.couchbase.client.vbucket.ConfigurationException;
 
 
@@ -330,7 +330,6 @@ public class Couchbase extends Nosql {
              if(options.size() < 1) {
                  throw new QueryException("key set is empty");
              }
-             System.out.println(options.size());
              List<String> keys = new ArrayList<String>();
              for (Value v: options) {
                 String s = (String) v.toJava();
@@ -452,6 +451,7 @@ public class Couchbase extends Nosql {
         final CouchbaseClient client = getClient(handler);
         Query q = new Query();
         q.setIncludeDocs(true);
+        boolean valueOnly = false;
         if(options != null) {
             Value keys = options.keys();
             for(final Item key : keys) {
@@ -479,6 +479,12 @@ public class Couchbase extends Nosql {
                 } else if(k.equals("key")) {
                     String s = ((Item) v).toString();
                     q.setKey(s);
+                } else if(k.equals("startkey")) {
+                    String s = ((Item) v).toString();
+                    q.setStartkeyDocID(s);
+                } else if(k.equals("endkey")) {
+                    String s = ((Item) v).toString();
+                    q.setEndkeyDocID(s);
                 } else if(k.equals("skip")) {
                     if(v.type().instanceOf(SeqType.ITR_OM)) {
                         long l = ((Item) v).itr(null);
@@ -491,37 +497,83 @@ public class Couchbase extends Nosql {
                         q.setRange(v.iter().get(0).toString(), v.iter().
                                 get(1).toString());
                     }
+                } else if(k.equals("descending")) {
+                    boolean desc = ((Item) v).bool(null);
+                    q.setDescending(desc);
+                } else if(k.equals("debug")) {
+                    boolean d = ((Item) v).bool(null);
+                    q.setDebug(d);
+                } else if(k.toLowerCase().equals("valueonly")) {
+                    valueOnly = ((Item) v).bool(null);
                 }
             }
         }
-        //q.setStale(Stale.FALSE);
+        q.setIncludeDocs(true);
         try {
             View view = client.getView(doc.toJava(), viewName.toJava());
             ViewResponse response = client.query(view, q);
-            java.util.Map<String, Object> map = response.getMap();
-            Str json = mapToJson(map);
+            Str json = valueOnly ? viewResponseToJsonValueOnly(response)
+                    : viewResponseToJson(response);
             return returnResult(handler, json);
         } catch (Exception e) {
             throw new QueryException(e);
         }
-        //return null;
     }
     /**
-     * Convert java Map<String, Object> into json format String and then return
-     * in Str.
-     * @param map
-     * @return Str
+     * create Json format string from view Response.
+     * @param viewResponse
+     * @return
      */
-    private Str mapToJson(final java.util.Map<String, Object> map) {
+    private Str viewResponseToJson(final ViewResponse viewResponse) {
         final StringBuilder json = new StringBuilder();
         json.append("{ ");
-        for(final Entry<String, Object> e : map.entrySet()) {
-          if(json.length() > 2) json.append(", ");
-          json.append('"').append(e.getKey()).append('"').append(" : ").
-          append(e.getValue());
+        for (ViewRow v: viewResponse) {
+            if(json.length() > 2) json.append(", ");
+            json.append('"').append(v.getKey()).append('"').append(" : ");
+            String value = v.getValue();
+            if(value != null) {
+                value = value.trim();
+                if(value.charAt(0) == '{' || value.charAt(0) == '[') {
+                    json.append(v.getValue());
+                } else {
+                    json.append('"').append(value.replaceAll("\"", "\\\"")).append('"');;
+                }
+            } else {
+                json.append('"').append("").append('"');
+            }
         }
         json.append(" } ");
-    return Str.get(json.toString());
+        return Str.get(json.toString());
+    }
+    /**
+     * create Json format string from view Response.
+     * @param viewResponse
+     * @return
+     */
+    private Str viewResponseToJsonValueOnly(final ViewResponse viewResponse) {
+        final StringBuilder json = new StringBuilder();
+        if(viewResponse.size() > 1) {
+            json.append("[ ");
+        }
+        for (ViewRow v: viewResponse) {
+            if(json.length() > 2) json.append(", ");
+            //json.append('"').append(v.getKey()).append('"').append(" : ");
+            String value = v.getValue();
+            if(value != null) {
+                value = value.trim();
+                if(value.charAt(0) == '{' || value.charAt(0) == '[') {
+                    json.append(v.getValue());
+                } else {
+                    json.append('"').append(value.replaceAll("\"", "\\\"")).append('"');;
+                }
+            } else {
+                json.append('"').append("").append('"');
+            }
+        }
+        if(viewResponse.size() > 1) {
+            json.append(" ] ");
+        }
+        return Str.get(json.toString());
     }
     /**
      *  close database instanses.
@@ -552,8 +604,5 @@ public class Couchbase extends Nosql {
         } else {
             client.shutdown();
         }
-    }
-    public Item test(final Item qu) throws QueryException {
-        return qu;
     }
 }
