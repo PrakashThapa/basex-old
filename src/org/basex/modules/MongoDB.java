@@ -88,8 +88,7 @@ public class MongoDB extends Nosql {
                     boolean auth = db.authenticate(uri.getUsername(),
                             uri.getPassword());
                     if (!auth) {
-                        throw new QueryException("Invalid "
-                    + "username or password");
+                        throw  MongoDBErrors.unAuthorised();
                     }
                  }
                 dbs.put(dbh, db);
@@ -98,12 +97,12 @@ public class MongoDB extends Nosql {
                 }
                 return Str.get(dbh);
                 } catch (final MongoException ex) {
-                    throw new QueryException(ex);
+                    throw MongoDBErrors.mongoExceptionError(ex);
                  }
             } catch (final MongoException ex) {
-                throw new QueryException(ex);
+                throw MongoDBErrors.mongoExceptionError(ex);
               } catch (UnknownHostException ex) {
-                  throw new QueryException(ex);
+                  throw MongoDBErrors.generalExceptionError(ex);
               }
         }
     /**
@@ -124,9 +123,9 @@ public class MongoDB extends Nosql {
             return Str.get(handler);
 
           } catch (final MongoException ex) {
-            throw new QueryException(ex);
+            throw MongoDBErrors.mongoExceptionError(ex);
           } catch (UnknownHostException ex) {
-            throw new QueryException(ex);
+            throw MongoDBErrors.generalExceptionError(ex);
           }
         }
     /**
@@ -141,14 +140,14 @@ public class MongoDB extends Nosql {
         String ch = handler.toJava();
         final MongoClient client = mongoClients.get(ch);
         if(client == null)
-            throw new QueryException("Unknown MongoDB handler: '" + ch + "'");
+            throw MongoDBErrors.mongoClientError(ch);
         final String dbh = "DB" + dbs.size();
         try {
             DB db = client.getDB(dbName.toJava());
             dbs.put(dbh, db);
             return Str.get(dbh);
         } catch (final Exception ex) {
-            throw new QueryException(ex);
+            throw MongoDBErrors.generalExceptionError(ex);
         }
     }
     /**
@@ -157,11 +156,10 @@ public class MongoDB extends Nosql {
      * @return DB handler
      * @throws QueryException
      */
-    private DB getDbHandler(final Str handler) throws QueryException {
+    protected DB getDbHandler(final Str handler) throws QueryException {
         final DB db = dbs.get(handler.toJava());
         if(db == null)
-            throw new QueryException("Unknown database handler: '" +
-        handler.toJava() + "'");
+            throw MongoDBErrors.mongoDBError(handler.toJava());
         return db;
       }
     /**
@@ -210,7 +208,7 @@ public class MongoDB extends Nosql {
                 final Str json = Str.get(JSON.serialize(result));
                 return returnResult(handler, json);
             } catch (final Exception ex) {
-                throw new QueryException(ex);
+                throw MongoDBErrors.generalExceptionError(ex);
             }
         } else {
           return  null;
@@ -230,7 +228,7 @@ public class MongoDB extends Nosql {
                 return returnResult(handler, json);
 
             } catch (final Exception ex) {
-                throw new QueryException(ex);
+                throw MongoDBErrors.generalExceptionError(ex);
             }
         } else {
           return  null;
@@ -242,12 +240,12 @@ public class MongoDB extends Nosql {
      * @return
      * @throws QueryException
      */
-    private DBObject getDbObjectFromStr(final Item item) throws QueryException {
+    protected DBObject getDbObjectFromStr(final Item item) throws QueryException {
         final String string = itemToString(item);
         try {
           return  (DBObject) JSON.parse(string);
     } catch (JSONParseException e) {
-      throw new QueryException("Invalid JSON syntax: " + string);
+      throw MongoDBErrors.jsonFormatError(string);
         }
     }
     /**
@@ -263,7 +261,7 @@ public class MongoDB extends Nosql {
       try {
         return objectToItem(handler, (DBObject) collection);
       } catch (JSONParseException e) {
-          throw new QueryException("Invalid JSON syntax: " + col);
+          throw MongoDBErrors.jsonFormatError(col);
          }
     }
     /**
@@ -334,7 +332,8 @@ public class MongoDB extends Nosql {
                      Value keys = options.keys();
                      for(final Item key : keys) {
                        if(!(key instanceof Str))
-                           throw new QueryException("String expected, ...");
+                           throw MongoDBErrors.
+                           generalExceptionError("String expected, ..." + key.toJava());
                        final String k = ((Str) key).toJava();
                        final Value v = options.get(key, null);
                       if(v instanceof Str || v.type().instanceOf(SeqType.ITR)) {
@@ -343,12 +342,14 @@ public class MongoDB extends Nosql {
                                   long l = ((Item) v).itr(null);
                                   cursor.limit((int) l);
                               } else {
-                                  throw new QueryException("Invalid value...");
+                                  throw MongoDBErrors.
+                                  generalExceptionError("Invalid value...");
                               }
                           }
                       } else if(v instanceof Map) {
                       } else {
-                          throw new QueryException("Invalid value 2...");
+                          throw MongoDBErrors.
+                          generalExceptionError("Invalid value 2...");
                       }
                        if(k.equals("skip")) {
                            //cursor.skip(Token.toInt(v));
@@ -369,7 +370,7 @@ public class MongoDB extends Nosql {
                 }
                 return resultToXml(handler, cursor);
               } catch (MongoException e) {
-                  throw new QueryException(e.getMessage());
+                  throw MongoDBErrors.generalExceptionError(e.getMessage());
               } finally {
                      db.requestDone();
               }
@@ -419,7 +420,7 @@ public class MongoDB extends Nosql {
             final DBObject cursor = coll.findOne(q, p);
             return  objectToItem(handler, cursor);
         } catch (MongoException e) {
-            throw new QueryException(e.getMessage());
+            throw MongoDBErrors.generalExceptionError(e.getMessage());
         } finally {
                db.requestDone();
         }
@@ -441,7 +442,7 @@ public class MongoDB extends Nosql {
             WriteResult wr = db.getCollection(col.toJava()).insert(obj);
            return returnResult(handler, Str.get(wr.toString()));
         } catch (MongoException e) {
-           throw new QueryException(db.getLastError().getString("err"));
+           throw MongoDBErrors.generalExceptionError(db.getLastError().getString("err"));
         } finally {
            db.requestDone();
         }
@@ -464,7 +465,7 @@ public class MongoDB extends Nosql {
             WriteResult wr = db.getCollection(itemToString(col)).update(q, o);
             return returnResult(handler, Str.get(wr.toString()));
         } catch (MongoException e) {
-            throw new QueryException(db.getLastError().getString("err"));
+            throw MongoDBErrors.generalExceptionError(db.getLastError().getString("err"));
         } finally {
            db.requestDone();
         }
@@ -491,7 +492,7 @@ public class MongoDB extends Nosql {
                    update(q, o, upsert, multi);
             return returnResult(handler, Str.get(wr.toString()));
         } catch (MongoException e) {
-            throw new QueryException(db.getLastError().getString("err"));
+            throw MongoDBErrors.generalExceptionError(db.getLastError().getString("err"));
         } finally {
            db.requestDone();
         }
@@ -513,7 +514,7 @@ public class MongoDB extends Nosql {
                    save(getDbObjectFromStr(saveStr));
            return returnResult(handler, Str.get(wr.toString()));
         } catch (MongoException e) {
-            throw new QueryException(db.getLastError().getString("err"));
+            throw MongoDBErrors.generalExceptionError(db.getLastError().getString("err"));
         } finally {
            db.requestDone();
         }
@@ -533,19 +534,14 @@ public class MongoDB extends Nosql {
             db.getCollection(itemToString(col)).remove(getDbObjectFromStr(remove));
             DBObject err = db.getLastError();
             if(err != null) {
-                throw new QueryException(err.get("err").toString());
+                throw MongoDBErrors.generalExceptionError(err.get("err").toString());
             }
         } catch (MongoException e) {
-            throw new QueryException(db.getLastError().getString("err"));
+            throw MongoDBErrors.generalExceptionError(db.getLastError().getString("err"));
         } finally {
            db.requestDone();
         }
     }
-//    public Item aggregate(final Str handler, final Item col, final Item first)
-//            throws Exception {
-//       // return aggregate(handler, col, first);
-//        return null;
-//    }
     /**
      * Mongodb aggregate().
      * @param handler database handler
@@ -595,7 +591,7 @@ public class MongoDB extends Nosql {
            final Iterable<DBObject> d = agg.results();
           return returnResult(handler, Str.get(JSON.serialize(d)));
         } catch (MongoException e) {
-            throw new QueryException(e.getMessage());
+            throw MongoDBErrors.generalExceptionError(e.getMessage());
         } finally {
            db.requestDone();
         }
@@ -629,7 +625,7 @@ public class MongoDB extends Nosql {
                     find().toArray();
             db.getCollection(itemToString(dest)).insert(cursor);
        } catch (MongoException e) {
-           throw new QueryException(db.getLastError().getString("err"));
+           throw MongoDBErrors.generalExceptionError(e);
         } finally {
            db.requestDone();
         }
@@ -652,7 +648,7 @@ public class MongoDB extends Nosql {
             dbDestionation.getCollection(itemToString(dest)).drop();
             dbDestionation.getCollection(itemToString(dest)).insert(cursor);
        } catch (MongoException e) {
-           throw new QueryException(db.getLastError().getString("err"));
+           throw MongoDBErrors.generalExceptionError(e);
         } finally {
            db.requestDone();
         }
@@ -669,7 +665,7 @@ public class MongoDB extends Nosql {
         try {
             db.getCollection(itemToString(col)).drop();
        } catch (MongoException e) {
-           throw new QueryException(db.getLastError().getString("err"));
+           throw MongoDBErrors.generalExceptionError(e);
         } finally {
            db.requestDone();
         }
@@ -687,7 +683,7 @@ public class MongoDB extends Nosql {
            CommandResult result = db.command(command.toJava());
            return returnResult(handler, Str.get(result.toString()));
        } catch (MongoException e) {
-           throw new QueryException(db.getLastError().getString("err"));
+           throw MongoDBErrors.generalExceptionError(e);
         } finally {
            db.requestDone();
         }
@@ -708,7 +704,7 @@ public class MongoDB extends Nosql {
                     getDbObjectFromStr(indexStr));
            //return returnResult(handler, Str.get(result.toString()));
        } catch (MongoException e) {
-           throw new QueryException(db.getLastError().getString("err"));
+           throw MongoDBErrors.generalExceptionError(db.getLastError().getString("err"));
         } finally {
            db.requestDone();
         }
@@ -729,7 +725,7 @@ public class MongoDB extends Nosql {
                     getDbObjectFromStr(indexStr));
            //return returnResult(handler, Str.get(result.toString()));
        } catch (MongoException e) {
-           throw new QueryException(db.getLastError().getString("err"));
+           throw MongoDBErrors.generalExceptionError(e);
         } finally {
            db.requestDone();
         }
@@ -753,7 +749,7 @@ public class MongoDB extends Nosql {
         String ch = handler.toJava();
         final MongoClient client = (MongoClient) getDbHandler(handler).getMongo();
         if(client == null)
-            throw new QueryException("Unknown MongoDB handler: '" + ch + "'");
+            throw MongoDBErrors.mongoDBError(ch);
         client.close();
     }
     /**
@@ -809,6 +805,10 @@ public class MongoDB extends Nosql {
             final Str reduce, final Item finalalize, final Item query,
             final Map options) throws Exception {
         final DB db = getDbHandler(handler);
+        if(map == null) {
+            throw MongoDBErrors.
+            generalExceptionError("Map function cannot be empty in Mapreduce");
+        }
         final DBObject q = query != null ?
                 getDbObjectFromStr(query) : null;
         final DBCollection collection = db.getCollection(itemToString(col));
@@ -835,18 +835,25 @@ public class MongoDB extends Nosql {
                 }
             }
         }
-        MapReduceCommand cmd = new MapReduceCommand(collection,
-               map.toJava(), reduce.toJava(), out, op, q);
-        if(finalalize != null) {
-            cmd.setFinalize((String) finalalize.toJava());
+        db.requestStart();
+        try {
+            MapReduceCommand cmd = new MapReduceCommand(collection,
+                    map.toJava(), reduce.toJava(), out, op, q);
+             if(finalalize != null) {
+                 cmd.setFinalize((String) finalalize.toJava());
+             }
+            final MapReduceOutput outcmd = collection.mapReduce(cmd);
+            return returnResult(handler, Str.get(JSON.serialize(outcmd.results())));
+        } catch (MongoException e) {
+            throw MongoDBErrors.generalExceptionError(e);
+        } finally {
+            db.requestDone();
         }
-       MapReduceOutput outcmd = collection.mapReduce(cmd);
-       return returnResult(handler, Str.get(JSON.serialize(outcmd.results())));
     }
     public Item mapreduce(final Str handler, final Str col, final Map options)
             throws Exception {
         if(options == null) {
-            throw new QueryException("Map optoins are empty");
+            throw MongoDBErrors.generalExceptionError("Map optoins are empty");
         }
         final DB db = getDbHandler(handler);
         final DBCollection collection = db.getCollection(itemToString(col));
@@ -855,11 +862,14 @@ public class MongoDB extends Nosql {
         String map = null;
         String reduce = null;
         DBObject query = null;
+        DBObject sort = null;
+        int limit = 0;
         String finalalize = null;
         OutputType op = MapReduceCommand.OutputType.INLINE;
         for(Item k : options.keys()) {
             String key = (String) k.toJava();
-            String value = (String) options.get(k, null).toJava();
+            Value val = options.get(k, null);
+            String value = (String) val.toJava();
             if(key.toLowerCase().equals("map")) {
                map = (String) value;
             } else if(key.toLowerCase().equals("reduce")) {
@@ -868,13 +878,23 @@ public class MongoDB extends Nosql {
                 out = value;
             } else if(key.toLowerCase().equals("outputype")) {
                 outType = value;
+            } else if(key.toLowerCase().equals("limit")) {
+                if(val.type().instanceOf(SeqType.ITR_OM)) {
+                    long l = ((Item) val).itr(null);
+                    limit = (int) l;
+                } else {
+                    throw MongoDBErrors.
+                    generalExceptionError(" Expected integer Value");
+                }
+            } else if(key.toLowerCase().equals("sort")) {
+                sort = getDbObjectFromStr(Str.get(value));
             } else if(key.toLowerCase().equals("query")) {
                 query = getDbObjectFromStr(Str.get(value));
             } else if(key.toLowerCase().equals("finalalize")) {
                 finalalize = value;
             }
         }
-        if(out != null) {
+        if(out != null && outType != null) {
             if(outType.toUpperCase().equals("REPLACE")) {
                 op = MapReduceCommand.OutputType.REPLACE;
             } else if(outType.toUpperCase().equals("MERGE")) {
@@ -882,16 +902,40 @@ public class MongoDB extends Nosql {
             } else if(outType.toUpperCase().equals("REDUCE")) {
                 op = MapReduceCommand.OutputType.REDUCE;
             }
+        } else if(out != null) {
+            op = MapReduceCommand.OutputType.REPLACE;
         }
         if(map == null) {
-            throw new QueryException("Map function cannot be empty");
+            throw MongoDBErrors.generalExceptionError("Map function cannot be empty");
         }
-        MapReduceCommand cmd = new MapReduceCommand(collection,
-               map, reduce, out, op, query);
-        if(finalalize != null) {
-            cmd.setFinalize(finalalize);
+        db.requestStart();
+        try {
+            MapReduceCommand cmd = new MapReduceCommand(collection,
+                    map, reduce, out, op, query);
+             if(finalalize != null) {
+                 cmd.setFinalize(finalalize);
+             }
+             if(limit != 0) {
+                 cmd.setLimit(limit);
+             }
+             if(sort != null) {
+                 cmd.setSort(sort);
+             }
+            final MapReduceOutput outcmd = collection.mapReduce(cmd);
+            return returnResult(handler, Str.get(JSON.serialize(outcmd.results())));
+        } catch (MongoException e) {
+            throw MongoDBErrors.generalExceptionError(e);
+        } finally {
+            db.requestDone();
         }
-       MapReduceOutput outcmd = collection.mapReduce(cmd);
-       return returnResult(handler, Str.get(JSON.serialize(outcmd.results())));
+    }
+   /************* questions to be solve ***********/
+    /**
+     * Questions options.
+     * @param q
+     * @return
+     */
+    public Item question(final Item q) {
+       return null;
     }
 }

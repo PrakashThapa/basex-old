@@ -9,11 +9,8 @@ import java.util.concurrent.TimeUnit;
 
 import net.spy.memcached.internal.OperationFuture;
 
-import org.basex.query.QueryContext;
 import org.basex.query.QueryException;
-import org.basex.query.func.FNFt;
 import org.basex.query.func.FuncOptions;
-import org.basex.query.iter.Iter;
 import org.basex.query.value.Value;
 import org.basex.query.value.item.Item;
 import org.basex.query.value.item.QNm;
@@ -55,11 +52,6 @@ public class Couchbase extends Nosql {
     public Couchbase() {
         super(Q_COUCHBASE);
     }
-    public Iter search(final QueryContext ctx) throws QueryException {
-        final NosqlOptions opts = new NosqlOptions();
-        new FNFt(null, null, null).checkOptions(2, Q_COUCHBASE, opts, ctx);
-        return null;
-    }
     /**
      * Couchbase connection with url host bucket.
      * @param url
@@ -100,9 +92,9 @@ public class Couchbase extends Nosql {
             couchbaseclients.put(handler, client);
             return Str.get(handler);
         } catch (ConfigurationException e) {
-            throw new QueryException("Invalid Authentication parameters");
+            throw CouchbaseErrors.unAuthorised();
         }catch (Exception ex) {
-              throw new QueryException(ex);
+            throw CouchbaseErrors.generalExceptionError(ex);
           }
     }
     /**
@@ -116,10 +108,10 @@ public class Couchbase extends Nosql {
         try {
             final CouchbaseClient client = couchbaseclients.get(ch);
             if(client == null)
-                throw new QueryException("Unknown CouchbaseClient handler: '" + ch + "'");
+                throw CouchbaseErrors.couchbaseClientError(ch);
             return client;
         } catch (final Exception ex) {
-            throw new QueryException(ex);
+            throw CouchbaseErrors.generalExceptionError(ex);
         }
     }
     /**
@@ -144,15 +136,15 @@ public class Couchbase extends Nosql {
      */
     private Item returnResult(final Str handler, final Str json)
             throws Exception {
-        NosqlOptions opt =   getCouchbaseOption(handler);
-        if(json != null) {
-                if(opt != null) {
-                    return finalResult(json, opt);
-                } else {
-                    return finalResult(json, null);
-                }
+        final NosqlOptions opt =   getCouchbaseOption(handler);
+        Str j = json;
+        if(j == null) {
+            j =  Str.get("{}");
+        }
+        if(opt != null) {
+            return finalResult(j, opt);
         } else {
-          return  null;
+            return finalResult(j, null);
         }
     }
     /**
@@ -200,31 +192,7 @@ public class Couchbase extends Nosql {
      */
     public Item append(final Str handler, final Item key, final Item doc)
             throws QueryException {
-        //CouchbaseClient client = getClient(handler);
         return put(handler, key, doc, null);
-        /*
-        OperationFuture<Boolean> result = null;
-        Str existing = (Str) get(handler, key);
-        final StringBuilder s = new StringBuilder();
-        s.append('[');
-        s.append(existing.toJava());
-        s.append(',');
-        s.append(itemToString(doc));
-        s.append(']');
-        System.out.println(s.toString());
-        try {
-            result = client.replace(
-                    itemToString(key), s);
-            String msg = result.getStatus().getMessage();
-            if(result.get().booleanValue()) {
-                return Str.get(msg);
-            } else {
-                throw new QueryException("operation fail " + msg);
-            }
-        } catch (Exception ex) {
-            throw new QueryException(ex);
-        }
-        */
     }
     /**
      * document addition.
@@ -263,14 +231,14 @@ public class Couchbase extends Nosql {
             if(result.get().booleanValue()) {
                 return Str.get(msg);
             } else {
-                throw new QueryException("operation fail " + msg);
+                throw CouchbaseErrors.couchbaseOperationFail(type, msg);
             }
         } catch (Exception ex) {
-            throw new QueryException(ex);
+            throw CouchbaseErrors.generalExceptionError(ex);
         }
     }
     /**
-     * get document with key.
+     * get document by key.
      * @param handler
      * @param key
      * @return Item
@@ -280,13 +248,13 @@ public class Couchbase extends Nosql {
         CouchbaseClient client = getClient(handler);
         try {
             Object result =  client.get(itemToString(key));
-            if(result != null) {
-                 Str json = Str.get((String) result);
-                 return returnResult(handler, json);
-            } else
-              throw new QueryException("Element is empty");
+            if(result == null) {
+                result = "{}";
+            }
+            Str json = Str.get((String) result);
+            return returnResult(handler, json);
         } catch (Exception ex) {
-            throw new QueryException(ex);
+            throw CouchbaseErrors.generalExceptionError(ex);
         }
     }
     /**
@@ -297,7 +265,7 @@ public class Couchbase extends Nosql {
      * @return
      * @throws QueryException
      */
-    public Str get(final Str handler, final Str doc, final Map options)
+    public Item get(final Str handler, final Str doc, final Map options)
          throws QueryException {
         CouchbaseClient client = getClient(handler);
         try {
@@ -305,7 +273,9 @@ public class Couchbase extends Nosql {
                 Value keys = options.keys();
                 for(final Item key : keys) {
                     if(!(key instanceof Str))
-                        throw new QueryException("String expected, ...");
+                        throw CouchbaseErrors.
+                        couchbaseMessageOneKey("String value expected for '%s' key ",
+                                key.toJava());
                     final String k = ((Str) key).toJava();
                     final Value v = options.get(key, null);
                     if(k.equals("add")) {
@@ -316,33 +286,59 @@ public class Couchbase extends Nosql {
                     }
                 }
             }
-            final Object o = client.get(doc.toJava());
-            if(o != null) {
-                return Str.get(o.toString());
-            } else
-                throw new QueryException("Element is empty");
+            Object json = client.get(doc.toJava());
+            if(json == null) {
+                json = "{}";
+            }
+            Str jsonStr = Str.get((String) json);
+            return returnResult(handler, jsonStr);
         } catch (Exception ex) {
-            throw new QueryException(ex);
+            throw CouchbaseErrors.generalExceptionError(ex);
         }
     }
-    public Item getbulk(final Str handler, final Item options) throws QueryException {
+    public Item getbulk(final Str handler, final Value keyItems) throws QueryException {
+        CouchbaseClient client = getClient(handler);
          try {
-             if(options.size() < 1) {
-                 throw new QueryException("key set is empty");
+             if(keyItems.size() < 1) {
+                 throw CouchbaseErrors.keysetEmpty();
              }
              List<String> keys = new ArrayList<String>();
-             for (Value v: options) {
+             for (Value v: keyItems) {
                 String s = (String) v.toJava();
                 keys.add(s);
              }
-//             java.util.Map<String, Object> s = client.getBulk(keys);
-//             Object s1 = client.getBulk(keys);
-//             return new FNJson(staticContext, null, Function._JSON_PARSE, Str.get(s2)).
-//                     item(queryContext, null);
+             java.util.Map<String, Object> bulkset = client.getBulk(keys);
+             Str json = getBulkJson(bulkset);
+             return returnResult(handler, json);
          } catch (Exception ex) {
             throw new QueryException(ex);
         }
-        return handler;
+    }
+    /**
+     * Process Java Map<String, Object> (key/value), and return JSON Str.
+     * @param bulkset java Map<String Object> for key and value set
+     * @return json (STR)
+     */
+    private Str getBulkJson(final java.util.Map<String, Object> bulkset) {
+        final StringBuilder json = new StringBuilder();
+        json.append("{ ");
+        for (String key: bulkset.keySet()) {
+            if(json.length() > 2) json.append(", ");
+            json.append('"').append(key).append('"').append(" : ");
+            String value = (String) bulkset.get(key);
+            if(value != null) {
+                value = value.trim();
+                if(value.charAt(0) == '{' || value.charAt(0) == '[') {
+                    json.append(value);
+                } else {
+                    json.append('"').append(value.replaceAll("\"", "\\\"")).append('"');;
+                }
+            } else {
+                json.append('"').append("").append('"');
+            }
+        }
+        json.append(" } ");
+        return Str.get(json.toString());
     }
     /**
      * remove document by key.
@@ -355,7 +351,7 @@ public class Couchbase extends Nosql {
         return delete(handler, key);
     }
     /**
-     * Delete document by document key.
+     * Delete document by key.
      * @param handler
      * @param key
      * @return
@@ -369,10 +365,10 @@ public class Couchbase extends Nosql {
             if(result.get().booleanValue()) {
                 return Str.get(msg);
             } else {
-                throw new QueryException("operation fail:" + msg);
+                throw CouchbaseErrors.couchbaseOperationFail("delete", msg);
             }
         } catch (Exception ex) {
-            throw new QueryException(ex);
+            throw CouchbaseErrors.generalExceptionError(ex);
         }
     }
     /**
@@ -402,7 +398,7 @@ public class Couchbase extends Nosql {
             final Str map, final Str reduce) throws QueryException {
         CouchbaseClient client = getClient(handler);
         if(map == null) {
-            throw new QueryException("map function is empty");
+            throw CouchbaseErrors.generalExceptionError("map function is empty");
         }
         try {
             DesignDocument designDoc = new DesignDocument(doc.toJava());
@@ -414,14 +410,15 @@ public class Couchbase extends Nosql {
                 viewDesign = new ViewDesign(viewName.toJava(), map.toJava());
             }
             designDoc.getViews().add(viewDesign);
-           Boolean success = client.createDesignDoc(designDoc);
+           boolean success = client.createDesignDoc(designDoc);
            if(success) {
                return Str.get("ok");
            } else {
-               throw new QueryException("There is something wrong");
+               final String msg = "There is something wrong when creating View";
+               throw CouchbaseErrors.generalExceptionError(msg);
            }
         } catch (Exception e) {
-            throw new QueryException(e);
+            throw CouchbaseErrors.generalExceptionError(e);
         }
     }
     /**
@@ -456,7 +453,9 @@ public class Couchbase extends Nosql {
             Value keys = options.keys();
             for(final Item key : keys) {
                 if(!(key instanceof Str))
-                    throw new QueryException("String expected, ...");
+                    throw CouchbaseErrors.
+                    couchbaseMessageOneKey("String value expected for '%s' key ",
+                            key.toJava());
                 final String k = ((Str) key).toJava();
                 final Value v = options.get(key, null);
                 if(k.equals("viewmode")) {
@@ -466,7 +465,9 @@ public class Couchbase extends Nosql {
                         long l = ((Item) v).itr(null);
                         q.setLimit((int) l);
                     } else {
-                        throw new QueryException("Invalid value number expected...");
+                        throw CouchbaseErrors.
+                        couchbaseMessageOneKey("Integer value expected for '%s' key ",
+                                key.toJava());
                     }
                 } else if(k.equals("stale")) {
                     String s = ((Item) v).toString();
@@ -490,7 +491,18 @@ public class Couchbase extends Nosql {
                         long l = ((Item) v).itr(null);
                         q.setSkip((int) l);
                     } else {
-                        throw new QueryException("Invalid value number expected...");
+                        throw CouchbaseErrors.
+                        couchbaseMessageOneKey("Integer value expected for '%s' key ",
+                                key.toJava());
+                    }
+                } else if(k.equals("group_level")) {
+                    if(v.type().instanceOf(SeqType.ITR_OM)) {
+                        long l = ((Item) v).itr(null);
+                        q.setGroupLevel((int) l);
+                    } else {
+                        throw CouchbaseErrors.
+                        couchbaseMessageOneKey("Integer value expected for '%s' key ",
+                                key.toJava());
                     }
                 } else if(k.equals("range")) {
                     if(v.iter().size() == 2) {
@@ -516,7 +528,7 @@ public class Couchbase extends Nosql {
                     : viewResponseToJson(response);
             return returnResult(handler, json);
         } catch (Exception e) {
-            throw new QueryException(e);
+            throw CouchbaseErrors.generalExceptionError(e);
         }
     }
     /**
@@ -594,12 +606,12 @@ public class Couchbase extends Nosql {
         CouchbaseClient client = getClient(handler);
         if(time != null) {
             if(!time.type().instanceOf(SeqType.ITR)) {
-                throw new QueryException("Time is not valid, ...");
+                throw CouchbaseErrors.timeInvalid();
             }
             long seconds = ((Item) time).itr(null);
             boolean result = client.shutdown(seconds, TimeUnit.SECONDS);
             if(!result) {
-                throw new QueryException("cannot be shutdown now");
+                throw CouchbaseErrors.shutdownError();
             }
         } else {
             client.shutdown();
