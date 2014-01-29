@@ -6,7 +6,6 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
-
 import net.spy.memcached.internal.OperationFuture;
 
 import org.basex.query.QueryException;
@@ -19,6 +18,7 @@ import org.basex.query.value.map.Map;
 import org.basex.query.value.type.SeqType;
 import com.couchbase.client.CouchbaseClient;
 import com.couchbase.client.CouchbaseConnectionFactory;
+import com.couchbase.client.protocol.views.ComplexKey;
 import com.couchbase.client.protocol.views.DesignDocument;
 import com.couchbase.client.protocol.views.Query;
 import com.couchbase.client.protocol.views.Stale;
@@ -36,21 +36,42 @@ import com.couchbase.client.vbucket.ConfigurationException;
  * @author Prakash Thapa
  */
 public class Couchbase extends Nosql {
+    protected static final String DESCENDING = "descending";
+    protected static final String ENDKEY = "endkey";
+    protected static final String GROUP = "group";
+    protected static final String GROUP_LEVEL = "group_level";
+    protected static final String KEY = "key";
+    protected static final String KEYS = "keys";
+    protected static final String LIMIT = "limit";
+    protected static final String REDUCE = "reduce";
+    protected static final String SKIP = "skip";
+    protected static final String STALE = "stale";
+    protected static final String STARTKEY = "startkey";
+    protected static final String DEBUG = "debug";
+    protected static final String VIEWMODE = "viewmode";
+    protected static final String OK = "ok";
+    protected static final String FALSE = "false";
+    protected static final String UPDATE_AFTER = "update_after";
+    protected static final String RANGE = "range";
+    protected static final String VALUEONLY = "valueonly";
+    protected static final String INCLUDEDOCS = "includedocs";
+    protected boolean valueOnly;
     /** URL of this module. */
-    private static final String COUCHBASE_URL = "http://basex.org/modules/couchbase";
+    protected static final String COUCHBASE_URL = "http://basex.org/modules/couchbase";
     /** QName of Couchbase options. */
-    private static final QNm Q_COUCHBASE = QNm.get("couchbase", "options",
+    protected static final QNm Q_COUCHBASE = QNm.get("couchbase", "options",
             COUCHBASE_URL);
     /** Couchbase instances. */
-    private HashMap<String, CouchbaseClient> couchbaseclients =
+    protected HashMap<String, CouchbaseClient> couchbaseclients =
             new HashMap<String, CouchbaseClient>();
     /** Couchbase options. */
-    private HashMap<String, NosqlOptions> couchopts = new HashMap
+    protected HashMap<String, NosqlOptions> couchopts = new HashMap
             <String, NosqlOptions>();
     /** nodes array. */
-    //private ArrayList<URI> nodes = new ArrayList<URI>();
+    //protected ArrayList<URI> nodes = new ArrayList<URI>();
     public Couchbase() {
         super(Q_COUCHBASE);
+        this.valueOnly = false;
     }
     /**
      * Couchbase connection with url host bucket.
@@ -103,7 +124,7 @@ public class Couchbase extends Nosql {
      * @return connection instance.
      * @throws QueryException
      */
-    private CouchbaseClient getClient(final Str handler) throws QueryException {
+    protected CouchbaseClient getClient(final Str handler) throws QueryException {
         String ch = handler.toJava();
         try {
             final CouchbaseClient client = couchbaseclients.get(ch);
@@ -119,7 +140,7 @@ public class Couchbase extends Nosql {
      * @param handler
      * @return MongoOptions
      */
-    private NosqlOptions getCouchbaseOption(final Str handler) {
+    protected NosqlOptions getCouchbaseOption(final Str handler) {
         NosqlOptions opt = couchopts.get(handler.toJava());
         if(opt != null)
             return opt;
@@ -134,7 +155,7 @@ public class Couchbase extends Nosql {
      * @return
      * @throws Exception
      */
-    private Item returnResult(final Str handler, final Str json)
+    protected Item returnResult(final Str handler, final Str json)
             throws Exception {
         final NosqlOptions opt =   getCouchbaseOption(handler);
         Str j = json;
@@ -319,7 +340,7 @@ public class Couchbase extends Nosql {
      * @param bulkset java Map<String Object> for key and value set
      * @return json (STR)
      */
-    private Str getBulkJson(final java.util.Map<String, Object> bulkset) {
+    protected Str getBulkJson(final java.util.Map<String, Object> bulkset) {
         final StringBuilder json = new StringBuilder();
         json.append("{ ");
         for (String key: bulkset.keySet()) {
@@ -434,6 +455,111 @@ public class Couchbase extends Nosql {
         return getview(handler, doc, viewName, null);
     }
     /**
+     * Map.
+     * @param options
+     * @return
+     * @throws QueryException
+     */
+    protected Query query(final Map options) throws QueryException {
+        Query q = new Query();
+        if(options != null) {
+            Value keys = options.keys();
+            for(final Item key : keys) {
+                if(!(key instanceof Str))
+                    throw CouchbaseErrors.
+                    couchbaseMessageOneKey("String value expected for '%s' key ",
+                            key.toJava());
+                final String k = ((Str) key).toJava();
+                final Value v = options.get(key, null);
+                if(k.equals(VIEWMODE)) {
+                    System.setProperty(VIEWMODE, v.toJava().toString());
+                } else if(k.equals(LIMIT)) {
+                    if(v.type().instanceOf(SeqType.ITR_OM)) {
+                        long l = ((Item) v).itr(null);
+                        q.setLimit((int) l);
+                    } else {
+                        throw CouchbaseErrors.
+                        couchbaseMessageOneKey("Integer value expected for '%s' key ",
+                                key.toJava());
+                    }
+                } else if(k.equals(STALE)) {
+                    String s = ((Item) v).toString();
+                    if(s.equals(OK))
+                        q.setStale(Stale.OK);
+                    else if(s.equals(FALSE))
+                        q.setStale(Stale.FALSE);
+                    else if(s.equals(UPDATE_AFTER))
+                        q.setStale(Stale.UPDATE_AFTER);
+                } else if(k.equals(KEY)) {
+                    q.setKey(((Item) v).toString());
+                } else if(k.equals(DESCENDING)) {
+                    boolean desc = ((Item) v).bool(null);
+                    q.setDescending(desc);
+                } else if(k.equals(DEBUG)) {
+                    q.setDebug(((Item) v).bool(null));
+                } else if(k.equals(REDUCE)) {
+                    boolean d = ((Item) v).bool(null);
+                    q.setReduce(d);
+                } else if(k.equals(GROUP)) {
+                    boolean d = ((Item) v).bool(null);
+                    q.setGroup(d);
+                } else if(k.equals(STARTKEY)) {
+                    String s = ((Str) v).toJava();
+                    q.setStartkeyDocID(s);
+                } else if(k.equals(ENDKEY)) {
+                    String s = ((Item) v).toString();
+                    q.setEndkeyDocID(s);
+                } else if(k.equals(SKIP)) {
+                    if(v.type().instanceOf(SeqType.ITR_OM)) {
+                        long l = ((Item) v).itr(null);
+                        q.setSkip((int) l);
+                    } else {
+                        throw CouchbaseErrors.
+                        couchbaseMessageOneKey("Integer value expected for '%s' key ",
+                                key.toJava());
+                    }
+                } else if(k.equals(GROUP_LEVEL)) {
+                    if(v.type().instanceOf(SeqType.ITR_OM)) {
+                        long l = ((Item) v).itr(null);
+                        q.setGroupLevel((int) l);
+                    } else {
+                        throw CouchbaseErrors.
+                        couchbaseMessageOneKey("Integer value expected for '%' key ",
+                                key.toJava());
+                    }
+                } else if(k.equals(RANGE)) {
+                    if(!(v instanceof Map)) {
+                        throw CouchbaseErrors.
+                        couchbaseMessageOneKey(" Map is expected for key '%'",
+                                key.toJava());
+                    }
+                    Map range = (Map) v;
+                    Value s = range.get(Str.get(STARTKEY), null);
+                    Value e = range.get(Str.get(ENDKEY), null);
+                    String msg = (s == null) ? " 'startkey' is empty" : (e == null) ?
+                            "'endkey' is empty" : null;
+                    if(msg != null) {
+                        throw CouchbaseErrors.
+                        generalExceptionError(msg);
+                    }
+                    q.setRange(ckey(s), ckey(s));
+                } else if(k.toLowerCase().equals(KEYS)) {
+                    ComplexKey ckey = ckey(v);
+                   if(ckey != null) {
+                       q.setKeys(ckey);
+                   }
+                } else if(k.toLowerCase().equals(VALUEONLY)) {
+                    valueOnly = ((Item) v).bool(null);
+                } else if(k.toLowerCase().equals("solution")) {
+                    ((Item) v).bool(null);
+                } else if(k.toLowerCase().equals(INCLUDEDOCS)) {
+                    q.setIncludeDocs(true);
+                }
+            }
+        }
+        return q;
+    }
+    /**
      * view with mode Option.
      * @param handler
      * @param doc
@@ -446,81 +572,7 @@ public class Couchbase extends Nosql {
     public Item getview(final Str handler, final Str doc, final Str viewName,
             final Map options) throws QueryException {
         final CouchbaseClient client = getClient(handler);
-        Query q = new Query();
-        q.setIncludeDocs(true);
-        boolean valueOnly = false;
-        if(options != null) {
-            Value keys = options.keys();
-            for(final Item key : keys) {
-                if(!(key instanceof Str))
-                    throw CouchbaseErrors.
-                    couchbaseMessageOneKey("String value expected for '%s' key ",
-                            key.toJava());
-                final String k = ((Str) key).toJava();
-                final Value v = options.get(key, null);
-                if(k.equals("viewmode")) {
-                    System.setProperty("viewmode", v.toJava().toString());
-                } else if(k.equals("limit")) {
-                    if(v.type().instanceOf(SeqType.ITR_OM)) {
-                        long l = ((Item) v).itr(null);
-                        q.setLimit((int) l);
-                    } else {
-                        throw CouchbaseErrors.
-                        couchbaseMessageOneKey("Integer value expected for '%s' key ",
-                                key.toJava());
-                    }
-                } else if(k.equals("stale")) {
-                    String s = ((Item) v).toString();
-                    if(s.equals("ok"))
-                        q.setStale(Stale.OK);
-                    else if(s.equals("false"))
-                        q.setStale(Stale.FALSE);
-                    else if(s.equals("update_after"))
-                        q.setStale(Stale.UPDATE_AFTER);
-                } else if(k.equals("key")) {
-                    String s = ((Item) v).toString();
-                    q.setKey(s);
-                } else if(k.equals("startkey")) {
-                    String s = ((Item) v).toString();
-                    q.setStartkeyDocID(s);
-                } else if(k.equals("endkey")) {
-                    String s = ((Item) v).toString();
-                    q.setEndkeyDocID(s);
-                } else if(k.equals("skip")) {
-                    if(v.type().instanceOf(SeqType.ITR_OM)) {
-                        long l = ((Item) v).itr(null);
-                        q.setSkip((int) l);
-                    } else {
-                        throw CouchbaseErrors.
-                        couchbaseMessageOneKey("Integer value expected for '%s' key ",
-                                key.toJava());
-                    }
-                } else if(k.equals("group_level")) {
-                    if(v.type().instanceOf(SeqType.ITR_OM)) {
-                        long l = ((Item) v).itr(null);
-                        q.setGroupLevel((int) l);
-                    } else {
-                        throw CouchbaseErrors.
-                        couchbaseMessageOneKey("Integer value expected for '%s' key ",
-                                key.toJava());
-                    }
-                } else if(k.equals("range")) {
-                    if(v.iter().size() == 2) {
-                        q.setRange(v.iter().get(0).toString(), v.iter().
-                                get(1).toString());
-                    }
-                } else if(k.equals("descending")) {
-                    boolean desc = ((Item) v).bool(null);
-                    q.setDescending(desc);
-                } else if(k.equals("debug")) {
-                    boolean d = ((Item) v).bool(null);
-                    q.setDebug(d);
-                } else if(k.toLowerCase().equals("valueonly")) {
-                    valueOnly = ((Item) v).bool(null);
-                }
-            }
-        }
-        q.setIncludeDocs(true);
+        Query q = this.query(options);
         try {
             View view = client.getView(doc.toJava(), viewName.toJava());
             ViewResponse response = client.query(view, q);
@@ -532,11 +584,32 @@ public class Couchbase extends Nosql {
         }
     }
     /**
+     * convert sequence into couchbase's java complexkey.
+     * @param v sequence
+     * @return ComplexKey
+     * @throws QueryException
+     */
+    protected ComplexKey ckey(final Value v) throws QueryException {
+        if(v.size() <= 0) {
+            throw CouchbaseErrors.
+            couchbaseMessageOneKey("items for '%s' cannot be empty",
+                    v.toJava());
+        }
+        Object [] keys = new Object[(int) v.size()];
+        int i = 0;
+        for(Value key: v) {
+            keys[i] = key.toJava();
+            i++;
+        }
+        ComplexKey k = ComplexKey.of(keys);
+        return k;
+    }
+    /**
      * create Json format string from view Response.
      * @param viewResponse
      * @return
      */
-    private Str viewResponseToJson(final ViewResponse viewResponse) {
+    protected Str viewResponseToJson(final ViewResponse viewResponse) {
         final StringBuilder json = new StringBuilder();
         json.append("{ ");
         for (ViewRow v: viewResponse) {
@@ -562,7 +635,7 @@ public class Couchbase extends Nosql {
      * @param viewResponse
      * @return
      */
-    private Str viewResponseToJsonValueOnly(final ViewResponse viewResponse) {
+    protected Str viewResponseToJsonValueOnly(final ViewResponse viewResponse) {
         final StringBuilder json = new StringBuilder();
         if(viewResponse.size() > 1) {
             json.append("[ ");

@@ -24,7 +24,7 @@ public final class CouchbaseErrors {
    * CB0001: General Exceptions.
    * @return query exception
    */
-  static QueryException generalExceptionError(final Object e) {
+  public static QueryException generalExceptionError(final Object e) {
       return thrw(1, "%s", e);
   }
   /**
@@ -64,7 +64,8 @@ public final class CouchbaseErrors {
    * @param msg return message from couchbase server
    * @return query exception
    */
-  static QueryException couchbaseMessageOneKey(final String msg, final Object key) {
+  public static QueryException couchbaseMessageOneKey(final String msg,
+          final Object key) {
     return thrw(6, msg, key);
   }
   /**

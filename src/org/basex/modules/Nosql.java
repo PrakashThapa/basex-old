@@ -1,5 +1,7 @@
 package org.basex.modules;
 
+import java.util.List;
+
 import org.basex.build.JsonOptions;
 import org.basex.build.JsonParserOptions;
 import org.basex.io.parse.json.JsonConverter;
@@ -27,6 +29,88 @@ class Nosql extends QueryModule {
     private  QNm qnmOptions;
     public Nosql(final QNm qnM) {
         qnmOptions   =   qnM;
+    }
+    protected String addchar(final String v, final int index, final char check,
+            final char replace) {
+        String val = v.trim();
+        StringBuilder s = new StringBuilder();
+        if(val.charAt(index) != check) {
+            s.append(replace);
+        }
+     return s.toString();
+    }
+    public String jsonString(final String v) {
+        StringBuilder s = new StringBuilder();
+        String val = v.trim();
+        if(val.isEmpty()) {
+            return "";
+        }
+        if(val.charAt(0) == '"') {
+        } else {
+            s.append('"');
+        }
+        s.append(val);
+        if(val.charAt(val.length() - 1) == '"') {
+        } else {
+            s.append('"');
+        }
+        return s.toString().trim();
+    }
+    public String jsonString(final String k, final String v) {
+        StringBuilder s = new StringBuilder();
+        s.append(jsonString(k)).append(":").append(jsonString(v));
+        return s.toString();
+    }
+    public String jsonString(final String k, final List<String> list,
+            final boolean object) {
+        StringBuilder s = new StringBuilder();
+        s.append(" { ");
+        if(list.size() == 1) {
+            s.append(jsonString(k)).append(" : ");
+            for(String v: list) {
+                s.append(jsonString(v));
+            }
+        } else {
+            s.append(jsonString(k)).append(" : ");
+            s.append("[ ");
+            for(String v: list) {
+                if(s.length() > 2) s.append(", ");
+                s.append(jsonString(v));
+            }
+            s.append(" ] ");
+        }
+        s.append(" } ");
+        return s.toString();
+    }
+    public String jsonString(final String k, final List<String> list) {
+        StringBuilder s = new StringBuilder();
+        if(list.size() == 1) {
+            s.append(jsonString(k)).append(" : ");
+            for(String v: list) {
+                s.append(jsonString(v));
+            }
+        } else {
+            s.append(jsonString(k)).append(" : ");
+            s.append("[ ");
+            for(String v: list) {
+                if(s.length() > 2) s.append(", ");
+                s.append(jsonString(v));
+            }
+            s.append(" ] ");
+        }
+        return s.toString();
+    }
+    public String jsonString(final String k, final String v, final boolean object) {
+        StringBuilder s = new StringBuilder();
+        String val = v.trim();
+        if(val.charAt(0) != '{') {
+            s.append('{');
+        }
+        s.append(jsonString(val));
+        if(val.charAt(val.length() - 1) != '}') {
+            s.append('}');
+        }
+        return s.toString();
     }
     /**
      * return java String from Item.
@@ -99,24 +183,15 @@ class Nosql extends QueryModule {
      */
     protected Item finalResult(final Str json, final NosqlOptions opt)
             throws Exception {
-//        final JsonParserOptions jopts = new JsonParserOptions();
-//        Object pt = opt.get(NosqlOptions.FORMAT2);
-//        new FuncOptions(qnmOptions, null).parse((Item) pt, jopts);
             try {
                 if(opt != null) {
                     if(opt.get(NosqlOptions.TYPE) == NosqlFormat.XML) {
                         final JsonParserOptions opts = new JsonParserOptions();
                         opts.set(JsonOptions.FORMAT, opt.get(JsonOptions.FORMAT));
-                        //return JsonConverter.convert(json.string(), opts);
                         final JsonConverter conv = JsonConverter.get(opts);
                         conv.convert(json.string(), null);
                         return conv.finish();
-                        //return new FNJson(staticContext, null,
-                        //        Function._JSON_PARSE, json).
-                        //        item(queryContext, null);
                     } else {
-                        //return json;
-                        //just change for formatting of josn
                         Item xXml = new FNJson(staticContext, null,
                                 Function._JSON_PARSE, json).
                                 item(queryContext, null);

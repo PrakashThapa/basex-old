@@ -2,6 +2,7 @@ package org.basex.modules;
 
 import java.net.UnknownHostException;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 import org.basex.query.QueryException;
@@ -33,9 +34,9 @@ import com.mongodb.util.JSON;
 import com.mongodb.util.JSONParseException;
 
 /**
- * Mongodb extension of Basex.
+ * MongoDB Driver for Basex.
  *
- * @author BaseX Team 2005-13, BSD License
+ * @author BaseX Team 2005-14, BSD License
  * @author Prakash Thapa
  */
 public class MongoDB extends Nosql {
@@ -62,6 +63,60 @@ public class MongoDB extends Nosql {
      */
     public Str connection(final Str url) throws QueryException {
         return connection(url, null);
+    }
+    private DBObject[] mapToDBObjectArray(final Map map) throws QueryException {
+        if((map != null) && (!map.isEmpty())) {
+            try {
+                final Value keys = map.keys();
+                DBObject[] dbObject = null;
+                int length = (int) keys.size();
+                if(length > 0) {
+                    dbObject = new BasicDBObject[length];
+                    int i = 0;
+                    for(Item key : keys) {
+                        final Value value = map.get(key, null);
+                        DBObject singleObject = new BasicDBObject();
+                        if(value instanceof Map) {
+                            singleObject.put(((Str) key).toJava(),
+                                    this.mapToDBObject((Map) value));
+                        } else if(value.type().instanceOf(SeqType.ITR_OM)) {
+                                long l = ((Item) value).itr(null);
+                                singleObject.put(((Str) key).toJava(), l);
+                        } else {
+                            singleObject.put(((Str) key).toJava(), value.toJava());
+                        }
+                        dbObject[i] = singleObject;
+                        i++;
+                    }
+                } else {
+                   dbObject = null;
+                }
+              System.out.println(dbObject);
+              return dbObject;
+            } catch (Exception e) {
+                MongoDBErrors.generalExceptionError(e);
+            }
+        }
+        return null;
+    }
+    private DBObject mapToDBObject(final Map map) throws QueryException {
+        if(map != null) {
+            final DBObject dbObject = new BasicDBObject();
+            final Value keys = map.keys();
+            for(Item key : keys) {
+                final Value value = map.get(key, null);
+                if(value instanceof Map) {
+                    dbObject.put(((Str) key).toJava(), this.mapToDBObject((Map) value));
+                } else if(value.type().instanceOf(SeqType.ITR_OM)) {
+                        long l = ((Item) value).itr(null);
+                        dbObject.put(((Str) key).toJava(), l);
+                } else {
+                   dbObject.put(((Str) key).toJava(), value.toJava());
+                }
+            }
+          return dbObject;
+        }
+        return null;
     }
     /**
      * Mongodb connection with options.
@@ -201,12 +256,17 @@ public class MongoDB extends Nosql {
      * @return Item of Xml
      * @throws QueryException
      */
-    private Item resultToXml(final Str handler, final DBCursor result)
+    private Item cursorToItem(final Str handler, final DBCursor cursor)
             throws QueryException {
-        if(result != null) {
+        if(cursor != null) {
             try {
-                final Str json = Str.get(JSON.serialize(result));
-                return returnResult(handler, json);
+                if(cursor.count() == 1) {
+                    Iterator<DBObject> row = cursor.iterator();
+                    return objectToItem(handler, row.next());
+                } else {
+                    final Str json = Str.get(JSON.serialize(cursor));
+                    return returnResult(handler, json);
+                }
             } catch (final Exception ex) {
                 throw MongoDBErrors.generalExceptionError(ex);
             }
@@ -368,7 +428,7 @@ public class MongoDB extends Nosql {
                        }
                      }
                 }
-                return resultToXml(handler, cursor);
+                return cursorToItem(handler, cursor);
               } catch (MongoException e) {
                   throw MongoDBErrors.generalExceptionError(e.getMessage());
               } finally {
@@ -937,5 +997,47 @@ public class MongoDB extends Nosql {
      */
     public Item question(final Item q) {
        return null;
+    }
+    public Item mfind(final Str handler, final Str col, final Map q)
+            throws QueryException {
+        return mfind(handler, col, q, null);
+    }
+    public Item mfind(final Str handler, final Str col, final Map q, final Map p)
+            throws QueryException {
+        DB db = getDbHandler((Str) handler);
+        DBCursor cursor = db.getCollection(col.toJava()).find(mapToDBObject(q),
+                mapToDBObject(p));
+        return cursorToItem(handler, cursor);
+    }
+    public Item taggregate(final Str handler, final Item col, final Map first)
+            throws Exception {
+        return taggregate(handler, col, first,  null);
+    }
+    public Item taggregate(final Str handler, final Item col, final Map first,
+            final Map options) throws Exception {
+        final DB db = getDbHandler(handler);
+        AggregationOutput agg;
+        db.requestStart();
+        try {
+            if(first == null) {
+                throw MongoDBErrors.generalExceptionError("First parameter for " +
+                        " Aggregation should not be empty");
+            }
+            if(options == null) {
+                agg =  db.getCollection(itemToString(col)).
+                        aggregate(mapToDBObject(first));
+            } else {
+                DBObject[] x = mapToDBObjectArray(options);
+                agg =  db.getCollection(itemToString(col)).
+                        aggregate(mapToDBObject(first), x);
+            }
+           final Iterable<DBObject> d = agg.results();
+          return returnResult(handler, Str.get(JSON.serialize(d)));
+        } catch (MongoException e) {
+            throw MongoDBErrors.generalExceptionError(e.getMessage());
+        } finally {
+           db.requestDone();
+        }
+
     }
 }
