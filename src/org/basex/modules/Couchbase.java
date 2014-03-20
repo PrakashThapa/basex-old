@@ -16,6 +16,10 @@ import org.basex.query.value.item.QNm;
 import org.basex.query.value.item.Str;
 import org.basex.query.value.map.Map;
 import org.basex.query.value.type.SeqType;
+import org.codehaus.jettison.json.JSONArray;
+import org.codehaus.jettison.json.JSONException;
+import org.codehaus.jettison.json.JSONObject;
+
 import com.couchbase.client.CouchbaseClient;
 import com.couchbase.client.CouchbaseConnectionFactory;
 import com.couchbase.client.protocol.views.ComplexKey;
@@ -604,24 +608,46 @@ public class Couchbase extends Nosql {
         ComplexKey k = ComplexKey.of(keys);
         return k;
     }
+    protected String javaMapToJson(final java.util.Map<String, Object> map) {
+        final StringBuilder json = new StringBuilder();
+        if(map.size() > 1)
+            json.append("[ ");
+         else
+             json.append("{ ");
+        for(String key: map.keySet()) {
+            Object value = map.get(key);
+            if(value instanceof java.util.Map<?, ?>) {
+                json.append(key).append(" : ").append(javaMapToJson(map));
+            } else {
+                json.append(key).append(" : ").append(value);
+            }
+        }
+        if(map.size() > 1)
+            json.append("] ");
+         else
+             json.append("} ");
+        return json.toString();
+    }
     /**
      * create Json format string from view Response.
      * @param viewResponse
      * @return
      */
     protected Str viewResponseToJson(final ViewResponse viewResponse) {
+       //return Str.get(javaMapToJson(viewResponse.getMap()));
         final StringBuilder json = new StringBuilder();
         json.append("{ ");
         for (ViewRow v: viewResponse) {
             if(json.length() > 2) json.append(", ");
-            json.append('"').append(v.getKey()).append('"').append(" : ");
+            json.append(v.getKey()).append(" : ");
             String value = v.getValue();
             if(value != null) {
                 value = value.trim();
                 if(value.charAt(0) == '{' || value.charAt(0) == '[') {
                     json.append(v.getValue());
                 } else {
-                    json.append('"').append(value.replaceAll("\"", "\\\"")).append('"');;
+                    json.append('"').append(value.replaceAll("\"", "\\\"")).
+       append('"');;
                 }
             } else {
                 json.append('"').append("").append('"');
@@ -689,5 +715,31 @@ public class Couchbase extends Nosql {
         } else {
             client.shutdown();
         }
+    }
+    /**
+     * Convert viewresponse to JSON in pattern of Key Value like {key:value} or
+     * [{key:value},{key:value}..].
+     * @param vr Couchbase {@link ViewResponse}
+     * @return String
+     * @throws JSONException
+     */
+    protected String vrTOJson(final ViewResponse vr) throws QueryException {
+        try {
+            JSONArray j = new JSONArray();
+            int size = vr.size();
+            if(size > 0) {
+               for(ViewRow r: vr) {
+                JSONObject jo = new JSONObject();
+                jo.put(r.getKey(), r.getValue());
+                if(size == 1)
+                    return jo.toString();
+                j.put(jo);
+               }
+               return j.toString();
+           }
+        } catch (JSONException e) {
+            CouchbaseErrors.generalExceptionError(e);
+        }
+       return null;
     }
 }

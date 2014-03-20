@@ -21,6 +21,8 @@ public class NosqlOptions extends JsonOptions {
     public static final NumberOption PORT = new NumberOption("port");
     public static final StringOption USERNAME = new StringOption("user");
     public static final StringOption PASSWORD = new StringOption("password");
+    public static final StringOption DATABASE = new StringOption("database");
+    public static final StringOption BUCKET = new StringOption("bucket");
     public static final EnumOption<NosqlFormat> TYPE =
             new EnumOption<NosqlFormat>("type", NosqlFormat.XML);
     /** return result type */

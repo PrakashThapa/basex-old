@@ -5,11 +5,11 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
+
 import org.basex.query.QueryException;
-import org.basex.query.func.FNJson;
 import org.basex.query.func.FuncOptions;
-import org.basex.query.func.Function;
 import org.basex.query.value.Value;
+import org.basex.query.value.item.Bln;
 import org.basex.query.value.item.Int;
 import org.basex.query.value.item.Item;
 import org.basex.query.value.item.QNm;
@@ -22,6 +22,7 @@ import com.mongodb.CommandResult;
 import com.mongodb.DB;
 import com.mongodb.DBCollection;
 import com.mongodb.DBCursor;
+import com.mongodb.DBEncoder;
 import com.mongodb.DBObject;
 import com.mongodb.MapReduceCommand;
 import com.mongodb.MapReduceCommand.OutputType;
@@ -34,16 +35,22 @@ import com.mongodb.util.JSON;
 import com.mongodb.util.JSONParseException;
 
 /**
- * MongoDB Driver for Basex.
+ * This is the primary class for MongoDb processing in Basex.
  *
  * @author BaseX Team 2005-14, BSD License
  * @author Prakash Thapa
  */
 public class MongoDB extends Nosql {
-    public MongoDB() {
-        super(Q_MONGODB);
-    }
-    /** URL of this module. */
+    protected static final String LIMIT = "limit";
+    protected static final String SORT = "SORT";
+    protected static final String SKIP = "skip";
+    protected static final String COUNT = "count";
+    protected static final String EXPLAIN = "explain";
+    protected static final String MAP = "map";
+    protected static final String REDUCE = "reduce";
+    protected static final String QUERY = "query";
+    protected static final String FINALIZE = "finalalize";
+    /** URL of MongDB module. */
     private static final String MONGO_URL = "http://basex.org/modules/mongodb";
     /** QName of MongoDB options. */
     private static final QNm Q_MONGODB = QNm.get("mongodb", "options",
@@ -55,15 +62,175 @@ public class MongoDB extends Nosql {
     private HashMap<String, DB> dbs = new HashMap<String, DB>();
     /** Mongo Options instances. */
     private HashMap<String, NosqlOptions> mongopts = new HashMap<String, NosqlOptions>();
+    public MongoDB() {
+        super(Q_MONGODB);
+    }
     /**
-     * Mongodb Connection from URLstructure: mongodb://root:root@localhost/test.
-     * @param url of Mongodb connection
-     * @return conncetion DB connection handler of Mongodb
+     * Connect MongoDB with it's url in the format of mongodb://root:root@localhost/test.
+     * @param  MongoDB URL for connection
+     * @return  Str Key of HashMap that contains all DB Object of Mongodb
+     * connection instances.
      * @throws QueryException
      */
-    public Str connection(final Str url) throws QueryException {
-        return connection(url, null);
+//    public Str connection(final Str url) throws QueryException {
+//        return connection(url, null);
+//    }
+    /**
+     * Connect parameters in map like: {"host":"localhost","port":27017,
+     * "database":"test", "username":"user", "password":"pass"}.
+     * @param connectionMap
+     * @return Str Key of HashMap that contains all DB Object of Mongodb
+     * connection instances.
+     * @throws QueryException
+     */
+    public Str connection(final Map connectionMap) throws QueryException {
+        final NosqlOptions opts = new NosqlOptions();
+        if(connectionMap != null) {
+            new FuncOptions(Q_MONGODB, null).parse(connectionMap, opts);
+        }
+        if(opts.get(NosqlOptions.URL) != null) {
+            return connection(Str.get(opts.get(NosqlOptions.URL)), connectionMap);
+        }
+        String handler = "Client" + mongoClients.size();
+        try {
+          MongoClient mongoClient = new MongoClient((String) opts.get(
+                  NosqlOptions.HOST), (int) opts.get(NosqlOptions.PORT));
+          mongoClients.put(handler, mongoClient);
+          char[] pass = (opts.get(NosqlOptions.PASSWORD) != null) ?
+                  opts.get(NosqlOptions.PASSWORD).toCharArray() : null;
+          return mongoConnect(handler, opts.get(NosqlOptions.DATABASE),
+                  opts.get(NosqlOptions.USERNAME), pass, connectionMap);
+        } catch (final MongoException ex) {
+          throw MongoDBErrors.mongoExceptionError(ex);
+        } catch (UnknownHostException ex) {
+          throw MongoDBErrors.generalExceptionError(ex);
+        }
     }
+    /**
+     * Mongodb connection with options.
+     * @param url
+     * @param options
+     * @return
+     * @throws QueryException
+     */
+    public Str connection(final Str url, final Map options)
+            throws QueryException {
+        MongoClientURI uri = new MongoClientURI(url.toJava());
+        String handler = "mongoClient" + mongoClients.size();
+        try {
+            MongoClient mongoClient = new MongoClient(uri);
+            mongoClients.put(handler, mongoClient);
+            return mongoConnect(handler, uri.getDatabase(), uri.getUsername(),
+                    uri.getPassword(), options);
+            } catch (final MongoException ex) {
+                throw MongoDBErrors.mongoExceptionError(ex);
+              } catch (UnknownHostException ex) {
+                  throw MongoDBErrors.generalExceptionError(ex);
+              }
+        }
+    /**
+     * Mongodb connection with separate Hostname, port and database.
+     * @param host hostname of server.
+     * @param port Port Number
+     * @param dbname Database name.
+     * @return Str key of Hashmap that contains all DB Instances
+     * @throws QueryException
+     */
+    public Str connection(final Str host, final Int port, final Str database)
+            throws QueryException {
+        return connection(host, port, database, null, null, null);
+    }
+    /**
+     * Mongodb connection with separate Hostname, port and database.
+     * @param host hostname of server.
+     * @param port Port Number
+     * @param dbname Database name.
+     * @param options
+     * @return Str key of Hashmap that contains all DB Instances
+     * @throws QueryException
+     */
+    public Str connection(final Str host, final Int port, final Str database,
+            final Map options) throws QueryException {
+        return connection(host, port, database, options,  null, null);
+      }
+    /**
+     * Mongodb connection with separate Hostname, port and database.
+     * @param host hostname of server.
+     * @param port Port Number
+     * @param dbname Database name.
+     * @param options
+     * @param username username of Mongodb
+     * @param password password of Mongodb
+     * @return Str key of Hashmap that contains all DB Instances
+     * @throws QueryException
+     */
+    public Str connection(final Str host, final Int port, final Str database,
+            final Map options, final Str username, final Str password)
+            throws QueryException {
+        String handler = "Client" + mongoClients.size();
+        try {
+          MongoClient mongoClient = new MongoClient((String) host.toJava(),
+              (int) port.itr());
+          mongoClients.put(handler, mongoClient);
+          char[] pass = (password != null) ? password.toJava().toCharArray() : null;
+          String user = (String) ((username != null) ? username.toJava() : username);
+          return mongoConnect(handler, database.toJava(), user, pass, options);
+        } catch (final MongoException ex) {
+          throw MongoDBErrors.mongoExceptionError(ex);
+        } catch (UnknownHostException ex) {
+          throw MongoDBErrors.generalExceptionError(ex);
+        }
+    }
+    /**
+     * This method take key of Hashmap, create DB object and store to another
+     * Hashmap.
+     * @param mongoClientHandler Key of Hashmap that contains all Mongoclient instances
+     * @param database name of database to be connect
+     * @param username user's name for mongodb Connect
+     * @param password password of user to connect Mongodb
+     * @param options Other nosql options like {"type":"json"} and so on
+     * @return Str key of Hashmap that contains all DB Instances
+     * @throws QueryException
+     */
+    private Str mongoConnect(final String mongoClientHandler, final String database,
+            final String username, final char[] password, final Map options)
+                    throws QueryException {
+        final NosqlOptions opts = new NosqlOptions();
+        if(options != null) {
+            new FuncOptions(Q_MONGODB, null).parse(options, opts);
+        }
+        MongoClient mongoClient = mongoClients.get(mongoClientHandler);
+        final String dbh = "DB" + dbs.size();
+        try {
+            DB db = mongoClient.getDB(database);
+            if (username != null && password != null) {
+                boolean auth = db.authenticate(username, password);
+                if (!auth) {
+                    throw  MongoDBErrors.unAuthorised();
+                }
+             }
+            dbs.put(dbh, db);
+            if(options != null) {
+                mongopts.put(dbh, opts);
+            }
+            return Str.get(dbh);
+            } catch (final MongoException ex) {
+                throw MongoDBErrors.mongoExceptionError(ex);
+             }
+    }
+    /**
+     * This Method take Map as parameters and create array of <code>DBObject</code>
+     * of MongoDB in first level like {"a":{"b":"c"},"x":{"y":"z"}} here there
+     * are two array with key "a" and "x" other will be be the key value parameter
+     * inBasicDBObject.
+     *  * <blockquote><pre>
+     *  DBObject obj = new BasicDBObject();
+     *  obj.put( "foo", "bar" );
+     *  </pre></blockquote>
+     * @param map Basex Map
+     * @return array of DBObject
+     * @throws QueryException
+     */
     private DBObject[] mapToDBObjectArray(final Map map) throws QueryException {
         if((map != null) && (!map.isEmpty())) {
             try {
@@ -91,7 +258,6 @@ public class MongoDB extends Nosql {
                 } else {
                    dbObject = null;
                 }
-              System.out.println(dbObject);
               return dbObject;
             } catch (Exception e) {
                 MongoDBErrors.generalExceptionError(e);
@@ -99,6 +265,17 @@ public class MongoDB extends Nosql {
         }
         return null;
     }
+    /**
+     * This Method convert Basex Map to MongoDB's DBObject.
+     * {"foo":"bar"}
+     * <blockquote><pre>
+     *  DBObject obj = new BasicDBObject();
+     *  obj.put( "foo", "bar" );
+     *  </pre></blockquote>
+     * @param map Basex's Map
+     * @return DBObject
+     * @throws QueryException
+     */
     private DBObject mapToDBObject(final Map map) throws QueryException {
         if(map != null) {
             final DBObject dbObject = new BasicDBObject();
@@ -119,96 +296,9 @@ public class MongoDB extends Nosql {
         return null;
     }
     /**
-     * Mongodb connection with options.
-     * @param url
-     * @param options
-     * @return
-     * @throws QueryException
-     */
-    public Str connection(final Str url, final Map options)
-            throws QueryException {
-        final NosqlOptions opts = new NosqlOptions();
-        if(options != null) {
-            new FuncOptions(Q_MONGODB, null).parse(options, opts);
-        }
-        MongoClientURI uri = new MongoClientURI(url.toJava());
-        String handler = "mongoClient" + mongoClients.size();
-        try {
-            MongoClient mongoClient = new MongoClient(uri);
-            mongoClients.put(handler, mongoClient);
-            final String dbh = "DB" + dbs.size();
-            try {
-                DB db = mongoClient.getDB(uri.getDatabase());
-                if (uri.getUsername() != null && uri.getPassword() != null) {
-                    boolean auth = db.authenticate(uri.getUsername(),
-                            uri.getPassword());
-                    if (!auth) {
-                        throw  MongoDBErrors.unAuthorised();
-                    }
-                 }
-                dbs.put(dbh, db);
-                if(options != null) {
-                    mongopts.put(dbh, opts);
-                }
-                return Str.get(dbh);
-                } catch (final MongoException ex) {
-                    throw MongoDBErrors.mongoExceptionError(ex);
-                 }
-            } catch (final MongoException ex) {
-                throw MongoDBErrors.mongoExceptionError(ex);
-              } catch (UnknownHostException ex) {
-                  throw MongoDBErrors.generalExceptionError(ex);
-              }
-        }
-    /**
-     * Mongodb connection when provided with host port and database separately.
-     * @param host host name
-     * @param port port
-     * @param dbname name of databases
-     * @return DB instance
-     * @throws QueryException
-     */
-    public Str connection(final Str host, final Int port, final Str dbname)
-            throws QueryException {
-          String handler = "Client" + mongoClients.size();
-          try {
-            MongoClient mongoClient = new MongoClient((String) host.toJava(),
-                (int) port.itr());
-            mongoClients.put(handler, mongoClient);
-            return Str.get(handler);
-
-          } catch (final MongoException ex) {
-            throw MongoDBErrors.mongoExceptionError(ex);
-          } catch (UnknownHostException ex) {
-            throw MongoDBErrors.generalExceptionError(ex);
-          }
-        }
-    /**
-     * DB selection with mongoclient instance.
-     * @param handler MongoClient handler of hashmap
-     * @param dbName Databasename to connect
-     * @return DB handler of hashmap
-     * @throws QueryException
-     */
-    public Str selectDb(final Str handler, final Str dbName)
-            throws QueryException {
-        String ch = handler.toJava();
-        final MongoClient client = mongoClients.get(ch);
-        if(client == null)
-            throw MongoDBErrors.mongoClientError(ch);
-        final String dbh = "DB" + dbs.size();
-        try {
-            DB db = client.getDB(dbName.toJava());
-            dbs.put(dbh, db);
-            return Str.get(dbh);
-        } catch (final Exception ex) {
-            throw MongoDBErrors.generalExceptionError(ex);
-        }
-    }
-    /**
-     * get DB handler from hashmap.
-     * @param handler hashmap key in Str
-     * @return DB handler
+     * This Method gives the DB Handler from Hashmap with given Key.
+     * @param handler key for Hashmap that contains all DB objects
+     * @return DB Object
      * @throws QueryException
      */
     protected DB getDbHandler(final Str handler) throws QueryException {
@@ -218,9 +308,9 @@ public class MongoDB extends Nosql {
         return db;
       }
     /**
-     * get Mongooptions from particular db handler.
-     * @param handler
-     * @return MongoOptions
+     * Get Mongodb Options for particular database handler.
+     * @param handler Database handler
+     * @return MongoOptions object
      */
     private NosqlOptions getMongoOption(final Str handler) {
         NosqlOptions opt = mongopts.get(handler.toJava());
@@ -230,11 +320,13 @@ public class MongoDB extends Nosql {
             return null;
     }
     /**
-     * This will check the assigned options and then return the final result
-     * process by parent class.
-     * @param handler
-     * @param json
-     * @return
+     * All the result from Mongodb will come to this Method in the form of Json String.
+     * First it checks the assigned NOSQL {@link NosqlOptions} options and then
+     * return the final result {@link #finalResult(Str, Str)} process by parent
+     * class[{@link Nosql}].
+     * @param handler Database handler
+     * @param json Str object that contains Json string
+     * @return Item
      * @throws Exception
      */
     private Item returnResult(final Str handler, final Str json)
@@ -251,9 +343,9 @@ public class MongoDB extends Nosql {
         }
     }
     /**
-     * Collection result(DBCursor) into xml item.
+     * Convert collection result(DBCursor) into Item {@link Item} element.
      * @param result DBCursor
-     * @return Item of Xml
+     * @return Item
      * @throws QueryException
      */
     private Item cursorToItem(final Str handler, final DBCursor cursor)
@@ -275,9 +367,9 @@ public class MongoDB extends Nosql {
         }
     }
     /**
-     * Collection object(DBObject) into xml item.
+     * Convert collection DBObject into Item {@link Item} element.
      * @param object DBObject  (one row result)
-     * @return Item of Xml
+     * @return Item
      * @throws QueryException
      */
     private Item objectToItem(final Str handler, final DBObject object)
@@ -295,23 +387,30 @@ public class MongoDB extends Nosql {
         }
     }
     /**
-     * take string as Str parameters and return DBObject of mongodb.
+     * Take string as Str and return DBObject of mongodb.
      * @param string
      * @return
      * @throws QueryException
      */
     protected DBObject getDbObjectFromStr(final Item item) throws QueryException {
-        final String string = itemToString(item);
         try {
-          return  (DBObject) JSON.parse(string);
+            if(item instanceof Map) {
+                return mapToDBObject((Map) item);
+            } else if(item instanceof Str) {
+                final String string = itemToString(item);
+                return  (DBObject) JSON.parse(string);
+            } else {
+                throw MongoDBErrors.
+                generalExceptionError("Number Expected for key '");
+            }
     } catch (JSONParseException e) {
-      throw MongoDBErrors.jsonFormatError(string);
+      throw MongoDBErrors.jsonFormatError(item.toJava());
         }
     }
     /**
      * Return all the collections in current database.
-     * @param string
-     * @return result in xml element
+     * @param handler DB handler.
+     * @return Item
      * @throws QueryException
      */
     public Item collections(final Str handler) throws QueryException {
@@ -325,7 +424,7 @@ public class MongoDB extends Nosql {
          }
     }
     /**
-     * MongoDB find() without any attributes. eg. db.collections.find()
+     * MongoDB find() without any parameters. eg. db.collections.find()
      * @param handler Database handler
      * @param col Collection name
      * @return result in xml element
@@ -335,11 +434,11 @@ public class MongoDB extends Nosql {
         return find(handler, col, null, null, null);
     }
     /**
-     * MongoDB find() condtion. eg. db.collections.find({'_id':2})
+     * MongoDB find() with query. eg. db.collections.find({'_id':2})
      * @param handler Database handler
      * @param col collection
      * @param query conditions
-     * @return xml element
+     * @return Item
      * @throws QueryException
      */
     public Item find(final Str handler, final Item col, final Item query)
@@ -347,7 +446,7 @@ public class MongoDB extends Nosql {
       return find(handler, col, query, null, null);
     }
     /**
-     * MongoDB find() condition and option.
+     * MongoDB find() Query and Projection.
      * @param handler Database handler
      * @param col collection
      * @param query conditions
@@ -360,17 +459,17 @@ public class MongoDB extends Nosql {
          return find(handler, col, query, opt, null);
        }
     /**
-     * Mongodb Find method real implementation.
+     * MongoDB find with all parameters.
      * @param handler Database handler
      * @param col collection
-     * @param query conditions
-     * @param field  projection on Mongodb
-     * @return xml elements
+     * @param query Query parameters
+     * @param opt options in Map like: {"limit":2}
+     * @param field  Projection
+     * @return Item
      * @throws QueryException
      */
     public Item find(final Str handler, final Item col, final Item query,
             final Item opt, final Item projection) throws QueryException {
-
           final DB db = getDbHandler(handler);
           db.requestStart();
               try {
@@ -393,39 +492,39 @@ public class MongoDB extends Nosql {
                      for(final Item key : keys) {
                        if(!(key instanceof Str))
                            throw MongoDBErrors.
-                           generalExceptionError("String expected, ..." + key.toJava());
+                           generalExceptionError("String expected " + key.toJava());
                        final String k = ((Str) key).toJava();
                        final Value v = options.get(key, null);
                       if(v instanceof Str || v.type().instanceOf(SeqType.ITR)) {
-                          if(k.equals("limit")) {
+                          if(k.equals(LIMIT)) {
                               if(v.type().instanceOf(SeqType.ITR_OM)) {
                                   long l = ((Item) v).itr(null);
                                   cursor.limit((int) l);
                               } else {
                                   throw MongoDBErrors.
-                                  generalExceptionError("Invalid value...");
+                                  generalExceptionError("Number Expected for key '"
+                                  + key.toJava() + "'");
                               }
+                          } else if(k.equals(SKIP)) {
+                              //cursor.skip(Token.toInt(v));
+                          } else if(k.equals(SORT)) {
+                              BasicDBObject sort = new BasicDBObject(k, v);
+                              sort.append("name", "-1");
+                              cursor.sort((DBObject) sort);
+                          } else if(k.equals(COUNT)) {
+                              int count = cursor.count();
+                              BasicDBObject res = new BasicDBObject();
+                              res.append("count", count);
+                              return objectToItem(handler, res);
+                          } else if(k.equals(EXPLAIN)) {
+                            DBObject result = cursor.explain();
+                             return objectToItem(handler, result);
                           }
                       } else if(v instanceof Map) {
                       } else {
                           throw MongoDBErrors.
                           generalExceptionError("Invalid value 2...");
                       }
-                       if(k.equals("skip")) {
-                           //cursor.skip(Token.toInt(v));
-                       } else if(k.equals("sort")) {
-                           BasicDBObject sort = new BasicDBObject(k, v);
-                           sort.append("name", "-1");
-                           cursor.sort((DBObject) sort);
-                       } else if(k.equals("count")) {
-                           int count = cursor.count();
-                           BasicDBObject res = new BasicDBObject();
-                           res.append("count", count);
-                           return objectToItem(handler, res);
-                       } else if(k.equals("explain")) {
-                         DBObject result = cursor.explain();
-                          return objectToItem(handler, result);
-                       }
                      }
                 }
                 return cursorToItem(handler, cursor);
@@ -439,7 +538,7 @@ public class MongoDB extends Nosql {
      * Mongodb's findOne() function.
      * @param handler
      * @param col
-     * @return
+     * @return Item
      * @throws QueryException
      */
     public Item findOne(final Str handler, final Item col)throws QueryException {
@@ -458,7 +557,7 @@ public class MongoDB extends Nosql {
        return findOne(handler, col, query, null);
     }
     /**
-     * findOne with query projection and fields real Implementation.
+     * findOne with query and projection projection.
      * @param handler
      * @param col
      * @param query
@@ -486,11 +585,11 @@ public class MongoDB extends Nosql {
         }
     }
     /**
-     * Insert data.
+     * Insert data in MongoDB.
      * @param handler DB Handler
      * @param col Collection name
-     * @param insertString string to insert in json formart.
-     * @return
+     * @param insertString string to insert in json formart or in Basex's Map
+     * @return Item result from Mongodb.
      * @throws Exception
      */
     public Item insert(final Str handler, final Str col, final Str insertString)
@@ -498,7 +597,7 @@ public class MongoDB extends Nosql {
         final DB db = getDbHandler(handler);
         db.requestStart();
         try {
-            DBObject obj = (DBObject) JSON.parse(insertString.toJava());
+            DBObject obj = getDbObjectFromStr(insertString);
             WriteResult wr = db.getCollection(col.toJava()).insert(obj);
            return returnResult(handler, Str.get(wr.toString()));
         } catch (MongoException e) {
@@ -510,46 +609,41 @@ public class MongoDB extends Nosql {
     /**
      * Mongodb update with two parameters like update({},{}).
      * @param handler
-     * @param col
-     * @param insertString
+     * @param col collection's name
+     * @param insertString Json Str or Basex's Map
      * @return Item
      * @throws Exception
      */
     public Item update(final Str handler, final Item col, final Item query,
             final Str updatestring) throws Exception {
-        final DB db = getDbHandler(handler);
-        db.requestStart();
-        try {
-            DBObject q = (DBObject) JSON.parse(itemToString(query));
-            DBObject o = (DBObject) JSON.parse(updatestring.toJava());
-            WriteResult wr = db.getCollection(itemToString(col)).update(q, o);
-            return returnResult(handler, Str.get(wr.toString()));
-        } catch (MongoException e) {
-            throw MongoDBErrors.generalExceptionError(db.getLastError().getString("err"));
-        } finally {
-           db.requestDone();
-        }
+        return update(handler, col, query, updatestring, null, null);
     }
     /**
      * Mongodb update with 4 parameters like update({},{}, upsert, multi).
      * @param handler Db Handler string
      * @param col Collection name
      * @param updatestring String to be updated
-     * @param upsert true/false for mongodb upsert
+     * @param upsert true/false for mongodb upsert(Json Str or Map)
      * @param multi true/false for mongodb multi
      * @return Item
      * @throws Exception
      */
     public Item update(final Str handler, final Item col, final Item query,
-            final Str updatestring, final boolean upsert, final boolean multi)
+            final Str updatestring, final Bln upsert, final Bln multi)
                     throws Exception {
         final DB db = getDbHandler(handler);
         db.requestStart();
         try {
-            DBObject q = (DBObject) JSON.parse(itemToString(query));
-            DBObject o = (DBObject) JSON.parse(updatestring.toJava());
-           WriteResult wr = db.getCollection(itemToString(col)).
-                   update(q, o, upsert, multi);
+            DBObject q =  getDbObjectFromStr(query);
+            DBObject updateValue = getDbObjectFromStr(updatestring);
+            WriteResult wr;
+            if(upsert != null && multi != null) {
+                wr = db.getCollection(itemToString(col)).
+                        update(q, updateValue, upsert.toJava(), multi.toJava());
+            } else {
+                wr = db.getCollection(itemToString(col)).
+                        update(q, updateValue);
+            }
             return returnResult(handler, Str.get(wr.toString()));
         } catch (MongoException e) {
             throw MongoDBErrors.generalExceptionError(db.getLastError().getString("err"));
@@ -561,7 +655,7 @@ public class MongoDB extends Nosql {
      * Mongodb Save function.
      * @param handler DB handler
      * @param col collection name
-     * @param saveStr string to save
+     * @param saveStr string to save(Map or Josn)
      * @return Item
      * @throws Exception
      */
@@ -580,33 +674,33 @@ public class MongoDB extends Nosql {
         }
     }
     /**
-     * Mongodb remove().
+     * Mongodb remove(). This will delete the document with specified query.
      * @param handler
-     * @param col
-     * @param removeStr
+     * @param col Collection name;
+     * @param query Query to select document.(Map or Json Str)
      * @throws QueryException
      */
-    public void remove(final Str handler, final Item col, final Item remove)
+    public void remove(final Str handler, final Item col, final Item query)
             throws QueryException {
         final DB db = getDbHandler(handler);
         db.requestStart();
         try {
-            db.getCollection(itemToString(col)).remove(getDbObjectFromStr(remove));
+            db.getCollection(itemToString(col)).remove(getDbObjectFromStr(query));
             DBObject err = db.getLastError();
             if(err != null) {
                 throw MongoDBErrors.generalExceptionError(err.get("err").toString());
             }
         } catch (MongoException e) {
-            throw MongoDBErrors.generalExceptionError(db.getLastError().getString("err"));
+            throw MongoDBErrors.generalExceptionError(e);
         } finally {
            db.requestDone();
         }
     }
     /**
-     * Mongodb aggregate().
+     * Mongodb Aggregate function with single aggregation parameter.
      * @param handler database handler
      * @param col collection name
-     * @param first aggregation compulsary
+     * @param first Only one parameter of Aggregate function.
      * @return Item
      * @throws Exception
      */
@@ -615,10 +709,12 @@ public class MongoDB extends Nosql {
         return aggregate(handler, col, first, null);
     }
     /**
-     * Mongodb aggregate().
+     * This method is for aggregating with all pipeline options. All the options
+     * should be given in sequence like: ('$group:{..}',...).
      * @param handler database handler
      * @param col collection name
      * @param first aggregation compulsary
+     * @param additionalOps other pipeline options in sequence.
      * @return Item
      * @throws QueryException
      */
@@ -626,24 +722,28 @@ public class MongoDB extends Nosql {
             final Value  additionalOps) throws Exception {
         final DB db = getDbHandler(handler);
         AggregationOutput agg;
-        DBObject[] s = null;
+        DBObject[] pipeline = null;
         if(additionalOps != null && (!additionalOps.isEmpty())) {
-            int length = (int) additionalOps.size();
-            if(length > 0) {
-                s = new BasicDBObject[length];
-                int i = 0;
-                for (Item x: additionalOps) {
-                     s[i++] = getDbObjectFromStr(x);
-                }
+            if(additionalOps instanceof Map) {
+                pipeline = mapToDBObjectArray((Map) additionalOps);
             } else {
-                s   =   null;
+                int length = (int) additionalOps.size();
+                if(length > 0) {
+                    pipeline = new BasicDBObject[length];
+                    int i = 0;
+                    for (Item x: additionalOps) {
+                        pipeline[i++] = getDbObjectFromStr(x);
+                    }
+                } else {
+                    pipeline   =   null;
+                }
             }
         }
         db.requestStart();
         try {
             if(additionalOps != null && (!additionalOps.isEmpty())) {
                 agg =  db.getCollection(itemToString(col)).
-                        aggregate(getDbObjectFromStr(first), s);
+                        aggregate(getDbObjectFromStr(first), pipeline);
             } else {
                 agg =  db.getCollection(itemToString(col)).
                         aggregate(getDbObjectFromStr(first));
@@ -670,10 +770,10 @@ public class MongoDB extends Nosql {
         return count;
     }
     /**
-     * copy from one collection to another.
+     * Copy data from One collection to another collection within same Database.
      * @param handler
-     * @param source
-     * @param dest
+     * @param source Source collection name
+     * @param dest Destination Collection name.
      * @throws QueryException
      */
     public void copy(final Str handler, final Item source, final Item dest)
@@ -692,9 +792,10 @@ public class MongoDB extends Nosql {
     }
     /**
      * Copy collection from one Database insert to another database.
-     * @param handler
-     * @param source
-     * @param dest
+     * @param handler Mongodb Connection for source database
+     * @param source source collection
+     * @param handlerDest Mongodb Connection for Destination database
+     * @param dest Destination Collection
      * @throws QueryException
      */
     public void copy(final Str handler, final Item source, final Str handlerDest,
@@ -716,7 +817,7 @@ public class MongoDB extends Nosql {
     /**
      * Drop collection from a database.
      * @param handler
-     * @param col
+     * @param col collection name
      * @throws QueryException
      */
     public void drop(final Str handler, final Item col)throws QueryException {
@@ -731,16 +832,38 @@ public class MongoDB extends Nosql {
         }
     }
     /**
-     * run database command.
+     * MongoDB runCommand() function.
      * @param handler
-     * @param command
+     * @param command Command to Execute
      * @throws Exception
      */
-    public Item runCommand(final Str handler, final Str command)throws Exception {
+    public Item runCommand(final Str handler, final Item command)throws Exception {
+       return runCommand(handler, command, null);
+    }
+    /**
+     * MongoDB runCommand() function with integer as parameter.
+     * @param handler
+     * @param command command to execute in Map or  JSON or simply String
+     * @param options integer options.
+     * @return Item
+     * @throws Exception
+     */
+    public Item runCommand(final Str handler, final Item command, final Int options)
+            throws Exception {
         final DB db = getDbHandler(handler);
         db.requestStart();
         try {
-           CommandResult result = db.command(command.toJava());
+            CommandResult result = null;
+            if(command instanceof Map) {
+                DBObject  cmd = mapToDBObject((Map) command);
+                if(options != null) {
+                    result = db.command(cmd, (DBEncoder) options.toJava());
+                } else {
+                    result = db.command(cmd);
+                }
+            } else {
+                result = db.command(((Str) command).toJava());
+            }
            return returnResult(handler, Str.get(result.toString()));
        } catch (MongoException e) {
            throw MongoDBErrors.generalExceptionError(e);
@@ -752,7 +875,7 @@ public class MongoDB extends Nosql {
      * Create Index in specified field.
      * @param handler
      * @param col name of collection
-     * @param indexStr string to create index
+     * @param indexStr string to create index json or Map
      * @throws Exception
      */
     public void ensureIndex(final Str handler, final Str col,
@@ -764,7 +887,7 @@ public class MongoDB extends Nosql {
                     getDbObjectFromStr(indexStr));
            //return returnResult(handler, Str.get(result.toString()));
        } catch (MongoException e) {
-           throw MongoDBErrors.generalExceptionError(db.getLastError().getString("err"));
+           throw MongoDBErrors.generalExceptionError(e);
         } finally {
            db.requestDone();
         }
@@ -773,7 +896,7 @@ public class MongoDB extends Nosql {
      * drop Index in specified field.
      * @param handler
      * @param col name of collection
-     * @param indexStr string to create index
+     * @param indexStr string to create index Json or Map
      * @throws Exception
      */
     public void dropIndex(final Str handler, final Str col,
@@ -791,34 +914,28 @@ public class MongoDB extends Nosql {
         }
     }
     /**
-     * convert json to xml.
-     * @param json
-     * @return Items in xml  format
-     * @throws QueryException
-     */
-    public Item jsonToXml(final Str json) throws QueryException {
-        return new FNJson(staticContext, null, Function._JSON_PARSE, json).
-                item(queryContext, null);
-    }
-    /**
      * take DB handler as parameter and get MongoClient and then close it.
      * @param handler DB handler
      * @throws QueryException
      */
     public void close(final Str handler) throws QueryException {
         String ch = handler.toJava();
-        final MongoClient client = (MongoClient) getDbHandler(handler).getMongo();
-        if(client == null)
-            throw MongoDBErrors.mongoDBError(ch);
-        client.close();
+        try {
+            final MongoClient client = (MongoClient) getDbHandler(handler).getMongo();
+            if(client == null)
+                throw MongoDBErrors.mongoDBError(ch);
+            client.close();
+        } catch (MongoException e) {
+            throw MongoDBErrors.mongoDBError(e);
+        }
     }
     /**
-     * Mongodb Mapreduce function with 2 parameters.
+     * This method is implemented for MongoDB Mapreduce.
      * @param handler Database Handler.
      * @param col Collection name
      * @param map Map method
      * @param reduce Reduce Method
-     * @return Items
+     * @return Item
      * @throws Exception
      */
     public Item mapreduce(final Str handler, final Str col, final Str map,
@@ -910,6 +1027,15 @@ public class MongoDB extends Nosql {
             db.requestDone();
         }
     }
+    /**
+     * Mapreduce all functions in xquery's Map like :{"map":"function(){..}"
+     * , "reduce":"function(){}"}.
+     * @param handler
+     * @param col collection name
+     * @param options all options of Mapreduce including "map" in key.
+     * @return
+     * @throws Exception
+     */
     public Item mapreduce(final Str handler, final Str col, final Map options)
             throws Exception {
         if(options == null) {
@@ -946,11 +1072,11 @@ public class MongoDB extends Nosql {
                     throw MongoDBErrors.
                     generalExceptionError(" Expected integer Value");
                 }
-            } else if(key.toLowerCase().equals("sort")) {
+            } else if(key.toLowerCase().equals(SORT)) {
                 sort = getDbObjectFromStr(Str.get(value));
-            } else if(key.toLowerCase().equals("query")) {
+            } else if(key.toLowerCase().equals(QUERY)) {
                 query = getDbObjectFromStr(Str.get(value));
-            } else if(key.toLowerCase().equals("finalalize")) {
+            } else if(key.toLowerCase().equals(FINALIZE)) {
                 finalalize = value;
             }
         }

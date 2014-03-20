@@ -65,6 +65,16 @@ public final class MongoDBErrors {
     return thrw(6, "Unknown database handler: '%s'", db);
   }
   /**
+   * take two parameters.
+   * @param msg
+   * @param key
+   * @return
+   */
+  public static QueryException mongoMessageOneKey(final String msg,
+          final Object key) {
+    return thrw(7, msg, key);
+  }
+  /**
    * Returns a query exception.
    * @param code code
    * @param msg message

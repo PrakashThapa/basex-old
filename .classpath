@@ -16,8 +16,9 @@
 			<attribute name="maven.pomderived" value="true"/>
 		</attributes>
 	</classpathentry>
-	<classpathentry combineaccessrules="false" kind="src" path="/basex"/>
 	<classpathentry kind="lib" path="C:/Users/PP/Downloads/jmagick-6.6.9.jar"/>
 	<classpathentry kind="lib" path="C:/Users/PP/Downloads/sqlite-jdbc4-3.8.2-SNAPSHOT.jar"/>
+	<classpathentry combineaccessrules="false" kind="src" path="/basex"/>
+	<classpathentry combineaccessrules="false" kind="src" path="/basex-api"/>
 	<classpathentry kind="output" path="target/classes"/>
 </classpath>

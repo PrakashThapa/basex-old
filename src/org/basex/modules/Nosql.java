@@ -16,8 +16,12 @@ import org.basex.query.func.Function;
 import org.basex.query.value.item.Item;
 import org.basex.query.value.item.QNm;
 import org.basex.query.value.item.Str;
+import org.basex.query.value.map.Map;
 import org.basex.query.value.node.ANode;
 import org.basex.query.value.node.FElem;
+import org.codehaus.jettison.json.JSONArray;
+import org.codehaus.jettison.json.JSONException;
+import org.codehaus.jettison.json.JSONObject;
 
 /**
  * All Nosql database common functionality.
@@ -279,4 +283,39 @@ class Nosql extends QueryModule {
         jsonNode.add((ANode) item);
         return jsonNode;
     }
+    /**** to json. **/
+    public Object toJson(final String key, final Object value) {
+        if(value != null) {
+            JSONObject json = new JSONObject();
+            try {
+                json.put(key, value);
+            } catch (JSONException e) {
+            }
+            return json;
+        } else {
+            JSONArray json = new JSONArray();
+            json.put(key);
+            return json;
+        }
+    }
+    public Object stringToJsonObject(final Object string) {
+        String s;
+        if(string instanceof Str) {
+            s = ((Str) string).toJava();
+        } else {
+            s = (String) string;
+        }
+        try {
+            JSONObject json = new JSONObject(s);
+            return json;
+        } catch (JSONException e) {
+            NosqlErrors.generalExceptionError(e);
+        }
+        return null;
+    }
+   protected Map insert(final Map m, final String k, final String v)
+           throws QueryException {
+       m.insert(Str.get(k), Str.get(v), null);
+       return m;
+   }
 }
