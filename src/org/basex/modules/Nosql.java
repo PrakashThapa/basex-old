@@ -8,6 +8,7 @@ import org.basex.io.parse.json.JsonConverter;
 import org.basex.io.serial.SerialMethod;
 import org.basex.io.serial.SerializerOptions;
 import org.basex.modules.NosqlOptions.NosqlFormat;
+import org.basex.modules.errors.NosqlErrors;
 import org.basex.query.QueryException;
 import org.basex.query.QueryModule;
 import org.basex.query.func.FNJson;

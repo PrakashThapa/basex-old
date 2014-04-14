@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 import net.spy.memcached.internal.OperationFuture;
 
+import org.basex.modules.errors.CouchbaseErrors;
 import org.basex.query.QueryException;
 import org.basex.query.func.FuncOptions;
 import org.basex.query.value.Value;

@@ -6,6 +6,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 
+import org.basex.modules.errors.MongoDBErrors;
 import org.basex.query.QueryException;
 import org.basex.query.func.FuncOptions;
 import org.basex.query.value.Value;
