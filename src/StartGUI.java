@@ -1,5 +1,12 @@
 import org.basex.BaseXGUI;
-class StartGUI {
+import org.basex.query.QueryModule;
+/**
+ * Mongodb extension of Basex.
+ *
+ * @author BaseX Team 2005-13, BSD License
+ * @author Prakash Thapa
+ */
+class StartGUI extends QueryModule {
     public static void main(final String[] args) throws Exception {
         new BaseXGUI();
         }
